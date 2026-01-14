@@ -61,7 +61,7 @@ All tools are exposed via MCP. Each tool accepts a `target` parameter (default: 
 | `read(path)` | Read remote file content |
 | `write(path, content)` | Create/overwrite remote file |
 | `edit(path, old_text, new_text)` | Safe text replacement |
-| `list(path)` | List directory contents (JSON) |
+| `list_dir(path)` | List directory contents (JSON) |
 
 ### Service Management
 | Tool | Description |

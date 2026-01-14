@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from mcp.server.fastmcp import FastMCP, Context
 from .ssh_manager import SSHManager
 from .session_store import SessionStore
@@ -173,7 +175,7 @@ async def edit(ctx: Context, path: str, old_text: str, new_text: str, target: st
     return await files.edit_file(manager, path, old_text, new_text, target)
 
 @mcp.tool()
-async def list(ctx: Context, path: str, target: str = "primary") -> str:
+async def list_dir(ctx: Context, path: str, target: str = "primary") -> str:
     """List files in a directory (JSON format)."""
     manager = await get_session_manager(ctx)
     if not manager: return "Error: Not connected."

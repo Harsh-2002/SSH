@@ -9,7 +9,7 @@ from typing import Any
 
 from .files import read_file, write_file, edit_file
 from .system import run_command
-from .monitoring import system_usage
+from .monitoring import usage as system_usage
 from .docker import docker_ps
 from .services_universal import service_action as single_service_action
 from .pkg import install_package as single_install, remove_package as single_remove
