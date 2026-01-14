@@ -12,13 +12,16 @@ logger = logging.getLogger("ssh-mcp")
 
 
 async def db_schema(manager, container_name: str, db_type: str,
-                    database: str | None = None, target: str = "primary") -> dict[str, Any]:
+                    database: str | None = None, username: str | None = None,
+                    password: str | None = None, target: str = "primary") -> dict[str, Any]:
     """Get database schema (tables, columns) by executing CLI inside a container.
     
     Args:
         container_name: Name of the Docker container running the database.
         db_type: One of "postgres", "mysql", "scylladb".
         database: Database name (required for postgres/mysql, optional for scylladb).
+        username: Database username (default: postgres/root).
+        password: Database password (optional).
         
     Returns:
         {"db_type": str, "container": str, "tables": str, "error": str | None}
@@ -38,17 +41,21 @@ async def db_schema(manager, container_name: str, db_type: str,
     
     try:
         if db_type == "postgres":
+            user = username or "postgres"
             db_flag = f"-d {database}" if database else ""
+            env_prefix = f"PGPASSWORD='{password}' " if password else ""
             # List tables
-            tables_cmd = f"docker exec {container_name} psql -U postgres {db_flag} -c '\\dt' 2>&1"
+            tables_cmd = f"docker exec {container_name} sh -c \"{env_prefix}psql -U {user} {db_flag} -c '\\dt'\" 2>&1"
             result["tables"] = await manager.execute(tables_cmd, target)
             
         elif db_type == "mysql":
             if not database:
                 result["error"] = "Database name is required for MySQL"
                 return result
+            user = username or "root"
+            pwd_flag = f"-p'{password}'" if password else ""
             # List tables
-            tables_cmd = f"docker exec {container_name} mysql -u root {database} -e 'SHOW TABLES;' 2>&1"
+            tables_cmd = f"docker exec {container_name} mysql -u {user} {pwd_flag} {database} -e 'SHOW TABLES;' 2>&1"
             result["tables"] = await manager.execute(tables_cmd, target)
             
         elif db_type in ("scylladb", "cassandra"):
@@ -70,7 +77,8 @@ async def db_schema(manager, container_name: str, db_type: str,
 
 
 async def db_describe_table(manager, container_name: str, db_type: str,
-                            table: str, database: str | None = None, 
+                            table: str, database: str | None = None,
+                            username: str | None = None, password: str | None = None,
                             target: str = "primary") -> dict[str, Any]:
     """Describe a specific table's structure.
     
@@ -79,6 +87,8 @@ async def db_describe_table(manager, container_name: str, db_type: str,
         db_type: One of "postgres", "mysql", "scylladb".
         table: Table name to describe.
         database: Database/keyspace name.
+        username: Database username (default: postgres/root).
+        password: Database password (optional).
         
     Returns:
         {"db_type": str, "table": str, "schema": str, "error": str | None}
@@ -98,15 +108,19 @@ async def db_describe_table(manager, container_name: str, db_type: str,
     
     try:
         if db_type == "postgres":
+            user = username or "postgres"
             db_flag = f"-d {database}" if database else ""
-            cmd = f"docker exec {container_name} psql -U postgres {db_flag} -c '\\d {table}' 2>&1"
+            env_prefix = f"PGPASSWORD='{password}' " if password else ""
+            cmd = f"docker exec {container_name} sh -c \"{env_prefix}psql -U {user} {db_flag} -c '\\d {table}'\" 2>&1"
             result["schema"] = await manager.execute(cmd, target)
             
         elif db_type == "mysql":
             if not database:
                 result["error"] = "Database name is required for MySQL"
                 return result
-            cmd = f"docker exec {container_name} mysql -u root {database} -e 'DESCRIBE {table};' 2>&1"
+            user = username or "root"
+            pwd_flag = f"-p'{password}'" if password else ""
+            cmd = f"docker exec {container_name} mysql -u {user} {pwd_flag} {database} -e 'DESCRIBE {table};' 2>&1"
             result["schema"] = await manager.execute(cmd, target)
             
         elif db_type in ("scylladb", "cassandra"):
@@ -127,7 +141,8 @@ async def db_describe_table(manager, container_name: str, db_type: str,
 
 
 async def db_query(manager, container_name: str, db_type: str, query: str,
-                   database: str | None = None, target: str = "primary") -> dict[str, Any]:
+                   database: str | None = None, username: str | None = None,
+                   password: str | None = None, target: str = "primary") -> dict[str, Any]:
     """Execute a SQL/CQL query inside a database container.
     
     Args:
@@ -135,6 +150,8 @@ async def db_query(manager, container_name: str, db_type: str, query: str,
         db_type: One of "postgres", "mysql", "scylladb".
         query: The SQL/CQL query to execute.
         database: Database/keyspace name.
+        username: Database username (default: postgres/root).
+        password: Database password (optional).
         
     Returns:
         {"db_type": str, "query": str, "result": str, "error": str | None}
@@ -157,13 +174,17 @@ async def db_query(manager, container_name: str, db_type: str, query: str,
     
     try:
         if db_type == "postgres":
+            user = username or "postgres"
             db_flag = f"-d {database}" if database else ""
-            cmd = f"docker exec {container_name} psql -U postgres {db_flag} -c '{safe_query}' 2>&1"
+            env_prefix = f"PGPASSWORD='{password}' " if password else ""
+            cmd = f"docker exec {container_name} sh -c \"{env_prefix}psql -U {user} {db_flag} -c '{safe_query}'\" 2>&1"
             result["result"] = await manager.execute(cmd, target)
             
         elif db_type == "mysql":
+            user = username or "root"
             db_flag = database if database else ""
-            cmd = f"docker exec {container_name} mysql -u root {db_flag} -e '{safe_query}' 2>&1"
+            pwd_flag = f"-p'{password}'" if password else ""
+            cmd = f"docker exec {container_name} mysql -u {user} {pwd_flag} {db_flag} -e '{safe_query}' 2>&1"
             result["result"] = await manager.execute(cmd, target)
             
         elif db_type in ("scylladb", "cassandra"):

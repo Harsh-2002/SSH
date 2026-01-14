@@ -160,12 +160,13 @@ async def bulk_remove_package(manager, packages: list[str], targets: list[str]) 
 
 
 async def bulk_db_query(manager, container_name: str, db_type: str, query: str,
-                        database: str | None, targets: list[str]) -> dict[str, Any]:
+                        database: str | None, targets: list[str],
+                        username: str | None = None, password: str | None = None) -> dict[str, Any]:
     """Execute the same SQL/CQL query on database containers across multiple hosts.
     
     Useful for checking replication, comparing data, or fleet-wide schema updates.
     """
-    tasks = [_run_on_target(single_db_query(manager, container_name, db_type, query, database, t), t) for t in targets]
+    tasks = [_run_on_target(single_db_query(manager, container_name, db_type, query, database, username, password, t), t) for t in targets]
     results = await asyncio.gather(*tasks)
     return {"query": query, "db_type": db_type, "results": list(results)}
 

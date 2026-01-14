@@ -73,6 +73,8 @@ All tools are exposed via MCP. Each tool accepts a `target` parameter (default: 
 | `docker_ip(container_name)` | Get container IP address(es) |
 | `docker_find_by_ip(ip_address)` | Find container by IP |
 | `docker_networks()` | List networks and their containers |
+| `docker_cp_from_container(container, container_path, host_path)` | Copy file from container to host (e.g., backups) |
+| `docker_cp_to_container(host_path, container, container_path)` | Copy file from host to container (e.g., configs) |
 
 ### Database (Container-Aware)
 | Tool | Description |

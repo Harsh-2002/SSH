@@ -284,6 +284,20 @@ async def docker_networks(ctx: Context, target: str = "primary") -> dict[str, An
     if not manager: return {"error": "Not connected"}
     return await docker.docker_networks(manager, target)
 
+@mcp.tool()
+async def docker_cp_from_container(ctx: Context, container_name: str, container_path: str, host_path: str, target: str = "primary") -> dict[str, Any]:
+    """Copy file/directory from Docker container to host filesystem. Perfect for extracting backups, logs, or any file from inside a container."""
+    manager = await get_session_manager(ctx)
+    if not manager: return {"error": "Not connected"}
+    return await docker.docker_cp_from_container(manager, container_name, container_path, host_path, target)
+
+@mcp.tool()
+async def docker_cp_to_container(ctx: Context, host_path: str, container_name: str, container_path: str, target: str = "primary") -> dict[str, Any]:
+    """Copy file/directory from host filesystem to Docker container. Useful for deploying configs, uploading files, etc."""
+    manager = await get_session_manager(ctx)
+    if not manager: return {"error": "Not connected"}
+    return await docker.docker_cp_to_container(manager, host_path, container_name, container_path, target)
+
 # --- Network Tools ---
 
 @mcp.tool()
@@ -357,25 +371,25 @@ async def list_db_containers(ctx: Context, target: str = "primary") -> dict[str,
     return await db.list_db_containers(manager, target)
 
 @mcp.tool()
-async def db_schema(ctx: Context, container_name: str, db_type: str, database: str | None = None, target: str = "primary") -> dict[str, Any]:
-    """Get database schema (tables). Supports: postgres, mysql, scylladb."""
+async def db_schema(ctx: Context, container_name: str, db_type: str, database: str | None = None, username: str | None = None, password: str | None = None, target: str = "primary") -> dict[str, Any]:
+    """Get database schema (tables). Supports: postgres, mysql, scylladb. Use username/password for custom credentials."""
     manager = await get_session_manager(ctx)
     if not manager: return {"error": "Not connected"}
-    return await db.db_schema(manager, container_name, db_type, database, target)
+    return await db.db_schema(manager, container_name, db_type, database, username, password, target)
 
 @mcp.tool()
-async def db_describe_table(ctx: Context, container_name: str, db_type: str, table: str, database: str | None = None, target: str = "primary") -> dict[str, Any]:
-    """Describe a specific table's structure."""
+async def db_describe_table(ctx: Context, container_name: str, db_type: str, table: str, database: str | None = None, username: str | None = None, password: str | None = None, target: str = "primary") -> dict[str, Any]:
+    """Describe a specific table's structure. Use username/password for custom credentials."""
     manager = await get_session_manager(ctx)
     if not manager: return {"error": "Not connected"}
-    return await db.db_describe_table(manager, container_name, db_type, table, database, target)
+    return await db.db_describe_table(manager, container_name, db_type, table, database, username, password, target)
 
 @mcp.tool()
-async def db_query(ctx: Context, container_name: str, db_type: str, query: str, database: str | None = None, target: str = "primary") -> dict[str, Any]:
-    """Execute a SQL/CQL query inside a database container."""
+async def db_query(ctx: Context, container_name: str, db_type: str, query: str, database: str | None = None, username: str | None = None, password: str | None = None, target: str = "primary") -> dict[str, Any]:
+    """Execute a SQL/CQL query inside a database container. Use username/password for custom credentials (e.g., username='posthook', password='secret')."""
     manager = await get_session_manager(ctx)
     if not manager: return {"error": "Not connected"}
-    return await db.db_query(manager, container_name, db_type, query, database, target)
+    return await db.db_query(manager, container_name, db_type, query, database, username, password, target)
 
 # --- Package Manager Tools ---
 
@@ -598,11 +612,11 @@ async def bulk_remove_package(ctx: Context, packages: list[str], targets: list[s
     return await bulk.bulk_remove_package(manager, packages, targets)
 
 @mcp.tool()
-async def bulk_db_query(ctx: Context, container_name: str, db_type: str, query: str, database: str | None, targets: list[str]) -> dict[str, Any]:
-    """Execute same SQL/CQL query on database containers across multiple hosts."""
+async def bulk_db_query(ctx: Context, container_name: str, db_type: str, query: str, database: str | None, targets: list[str], username: str | None = None, password: str | None = None) -> dict[str, Any]:
+    """Execute same SQL/CQL query on database containers across multiple hosts. Use username/password for custom credentials."""
     manager = await get_session_manager(ctx)
     if not manager: return {"error": "Not connected"}
-    return await bulk.bulk_db_query(manager, container_name, db_type, query, database, targets)
+    return await bulk.bulk_db_query(manager, container_name, db_type, query, database, targets, username, password)
 
 @mcp.tool()
 async def bulk_oom_check(ctx: Context, lines: int, targets: list[str]) -> dict[str, Any]:

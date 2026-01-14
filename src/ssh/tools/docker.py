@@ -158,3 +158,94 @@ async def docker_networks(manager: SSHManager, target: str | None = None) -> dic
     
     return result
 
+
+async def docker_cp_from_container(manager: SSHManager, container_name: str, 
+                                   container_path: str, host_path: str,
+                                   target: str | None = None) -> dict[str, Any]:
+    """Copy file or directory from Docker container to host filesystem.
+    
+    Args:
+        container_name: Name or ID of the container.
+        container_path: Path inside the container (e.g., /tmp/backup.sql).
+        host_path: Destination path on the host (e.g., /root/backups/backup.sql).
+        
+    Returns:
+        {"success": bool, "message": str, "container": str, "container_path": str, "host_path": str}
+        
+    Example:
+        Copy database backup from container to host:
+        docker_cp_from_container("postgres-db", "/tmp/backup.sql", "/root/backups/backup.sql")
+    """
+    result = {
+        "success": False,
+        "message": "",
+        "container": container_name,
+        "container_path": container_path,
+        "host_path": host_path
+    }
+    
+    if not await check_tool_availability(manager, "docker", target=target):
+        result["message"] = "Docker not available on target"
+        return result
+    
+    # Ensure destination directory exists
+    host_dir = "/".join(host_path.rsplit("/", 1)[:-1]) if "/" in host_path else "."
+    if host_dir and host_dir != ".":
+        mkdir_cmd = f"mkdir -p {host_dir}"
+        await manager.execute(mkdir_cmd, target=target)
+    
+    # Copy from container to host
+    copy_cmd = f"docker cp {container_name}:{container_path} {host_path} 2>&1"
+    output = await manager.execute(copy_cmd, target=target)
+    
+    if "Error" in output or "No such" in output:
+        result["message"] = f"Copy failed: {output.strip()}"
+        result["success"] = False
+    else:
+        result["message"] = f"Successfully copied {container_path} from {container_name} to {host_path}"
+        result["success"] = True
+    
+    return result
+
+
+async def docker_cp_to_container(manager: SSHManager, host_path: str,
+                                 container_name: str, container_path: str,
+                                 target: str | None = None) -> dict[str, Any]:
+    """Copy file or directory from host filesystem to Docker container.
+    
+    Args:
+        host_path: Source path on the host (e.g., /root/config.yaml).
+        container_name: Name or ID of the container.
+        container_path: Destination path inside container (e.g., /app/config.yaml).
+        
+    Returns:
+        {"success": bool, "message": str, "host_path": str, "container": str, "container_path": str}
+        
+    Example:
+        Copy config file from host to container:
+        docker_cp_to_container("/root/nginx.conf", "webserver", "/etc/nginx/nginx.conf")
+    """
+    result = {
+        "success": False,
+        "message": "",
+        "host_path": host_path,
+        "container": container_name,
+        "container_path": container_path
+    }
+    
+    if not await check_tool_availability(manager, "docker", target=target):
+        result["message"] = "Docker not available on target"
+        return result
+    
+    # Copy from host to container
+    copy_cmd = f"docker cp {host_path} {container_name}:{container_path} 2>&1"
+    output = await manager.execute(copy_cmd, target=target)
+    
+    if "Error" in output or "No such" in output:
+        result["message"] = f"Copy failed: {output.strip()}"
+        result["success"] = False
+    else:
+        result["message"] = f"Successfully copied {host_path} to {container_name}:{container_path}"
+        result["success"] = True
+    
+    return result
