@@ -248,24 +248,28 @@ class SSHManager:
             return self.primary_alias
         raise ConnectionError("No active connection and no target specified.")
 
-    async def execute(self, command: str, retry: bool = True, target: Optional[str] = None) -> str:
+    def _coerce_text(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return str(value)
+
+    async def run_result(self, command: str, retry: bool = True, target: Optional[str] = None) -> Dict[str, Any]:
+        """Run a command and return structured results."""
         alias = self._resolve_alias(target)
-        try:
-            await self._ensure_connection(alias)
-        except Exception:
-            if not retry: raise
-            # If connect fails, we might just fail out.
+        await self._ensure_connection(alias)
 
         conn = self.connections.get(alias)
         if not conn:
             raise ConnectionError(f"Not connected to '{alias}'.")
-        
+
         cwd = self.cwds.get(alias, ".")
         logger.info(f"Executing command on '{alias}': {command}")
 
         TIMEOUT = 60.0
         cwd_delimiter = "___MCP_CWD_CAPTURE___"
-        
+
         wrapped_command = (
             f'cd "{cwd}" && '
             f'( {command} ); LAST_EXIT_CODE=$?; '
@@ -274,17 +278,14 @@ class SSHManager:
         )
 
         try:
-            result = await asyncio.wait_for(
-                conn.run(wrapped_command), 
-                timeout=TIMEOUT
-            )
+            result = await asyncio.wait_for(conn.run(wrapped_command), timeout=TIMEOUT)
         except (asyncssh.ConnectionLost, BrokenPipeError, ConnectionResetError):
             if retry:
                 logger.warning(f"SSH Connection '{alias}' lost during execution. Reconnecting...")
                 if alias in self.connections:
-                     del self.connections[alias]
+                    del self.connections[alias]
                 await self._ensure_connection(alias)
-                return await self.execute(command, retry=False, target=alias)
+                return await self.run_result(command, retry=False, target=alias)
             raise
         except asyncio.TimeoutError:
             logger.error(f"Command timed out: {command}")
@@ -293,34 +294,46 @@ class SSHManager:
             logger.error(f"Execution error: {e}")
             raise RuntimeError(f"SSH Execution Error: {str(e)}")
 
-        # Output processing
-        full_stdout = result.stdout
-        stderr = result.stderr
+        stdout = self._coerce_text(result.stdout)
+        stderr = self._coerce_text(result.stderr)
         exit_code = result.exit_status
 
-        clean_stdout = full_stdout
-        if cwd_delimiter in full_stdout:
-            parts = full_stdout.split(cwd_delimiter)
+        # Update CWD using delimiter
+        clean_stdout = stdout
+        if cwd_delimiter in stdout:
+            parts = stdout.split(cwd_delimiter)
             clean_stdout = parts[0]
             if len(parts) > 1:
                 candidate = parts[1].strip()
                 if candidate:
                     self.cwds[alias] = candidate
 
-        output_parts = []
-        if clean_stdout:
-            output_parts.append(f"STDOUT:\n{clean_stdout.rstrip()}")
-        if stderr:
-            output_parts.append(f"STDERR:\n{stderr.rstrip()}")
-        
+        return {
+            "target": alias,
+            "stdout": clean_stdout,
+            "stderr": stderr,
+            "exit_code": exit_code,
+            "cwd": self.cwds.get(alias, cwd),
+        }
+
+    async def execute(self, command: str, retry: bool = True, target: Optional[str] = None) -> str:
+        """Run a command and return a human-readable string."""
+        res = await self.run_result(command, retry=retry, target=target)
+
+        output_parts: List[str] = []
+        if res["stdout"]:
+            output_parts.append(f"STDOUT:\n{res['stdout'].rstrip()}")
+        if res["stderr"]:
+            output_parts.append(f"STDERR:\n{res['stderr'].rstrip()}")
+
         final_output = "\n\n".join(output_parts) or "(No output)"
 
         MAX_LEN = 4000
         if len(final_output) > MAX_LEN:
-            final_output = final_output[:MAX_LEN] + f"\n... [Output truncated]"
+            final_output = final_output[:MAX_LEN] + "\n... [Output truncated]"
 
-        if exit_code != 0:
-            final_output += f"\n\n[Exit Code: {exit_code}]"
+        if res["exit_code"] != 0:
+            final_output += f"\n\n[Exit Code: {res['exit_code']}]"
 
         return final_output
 
