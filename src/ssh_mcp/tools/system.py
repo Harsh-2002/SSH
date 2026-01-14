@@ -1,6 +1,6 @@
 from ..ssh_manager import SSHManager
 
-async def get_system_info(manager: SSHManager) -> str:
+async def get_system_info(manager: SSHManager, target: str | None = None) -> str:
     """Returns basic system info (OS, Kernel, Shell)."""
     commands = [
         "uname -sr",
@@ -11,7 +11,7 @@ async def get_system_info(manager: SSHManager) -> str:
     # We run them as a single command for speed
     full_cmd = " && echo '|||' && ".join(commands)
     
-    output = await manager.execute(full_cmd)
+    output = await manager.execute(full_cmd, target=target)
     
     # Simple parsing logic (robustness depends on the shell)
     # Output format roughly:
@@ -23,6 +23,6 @@ async def get_system_info(manager: SSHManager) -> str:
     
     return f"System Info Raw Output:\n{output}"
 
-async def run_command(manager: SSHManager, command: str) -> str:
+async def run_command(manager: SSHManager, command: str, target: str | None = None) -> str:
     """Run a generic command."""
-    return await manager.execute(command)
+    return await manager.execute(command, target=target)

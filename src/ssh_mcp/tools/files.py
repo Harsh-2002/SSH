@@ -1,26 +1,26 @@
 from ..ssh_manager import SSHManager
 import json
 
-async def read_file(manager: SSHManager, path: str) -> str:
+async def read_file(manager: SSHManager, path: str, target: str | None = None) -> str:
     """Read contents of a file."""
-    return await manager.read_file(path)
+    return await manager.read_file(path, target=target)
 
-async def write_file(manager: SSHManager, path: str, content: str) -> str:
+async def write_file(manager: SSHManager, path: str, content: str, target: str | None = None) -> str:
     """Write content to a file."""
-    return await manager.write_file(path, content)
+    return await manager.write_file(path, content, target=target)
 
-async def list_directory(manager: SSHManager, path: str) -> str:
+async def list_directory(manager: SSHManager, path: str, target: str | None = None) -> str:
     """List files in a directory."""
-    files = await manager.list_files(path)
+    files = await manager.list_files(path, target=target)
     return json.dumps(files, indent=2)
 
-async def edit_file(manager: SSHManager, path: str, old_text: str, new_text: str) -> str:
+async def edit_file(manager: SSHManager, path: str, old_text: str, new_text: str, target: str | None = None) -> str:
     """
     Safely replace a block of text in a file.
     Fails if old_text is not found or is ambiguous (found multiple times).
     """
     # 1. Read file
-    content = await manager.read_file(path)
+    content = await manager.read_file(path, target=target)
     
     # 2. Check occurrences
     count = content.count(old_text)
@@ -33,6 +33,6 @@ async def edit_file(manager: SSHManager, path: str, old_text: str, new_text: str
     new_content = content.replace(old_text, new_text)
     
     # 4. Write back
-    await manager.write_file(path, new_content)
+    await manager.write_file(path, new_content, target=target)
     
     return "File updated successfully."

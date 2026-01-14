@@ -1,94 +1,180 @@
 # SSH MCP Server
 
-This is a Model Context Protocol (MCP) server that enables AI agents to connect to and interact with remote servers via SSH. It supports both local execution (stdio) and remote deployment (SSE).
+A Model Context Protocol (MCP) server that lets an agent connect to remote machines over SSH and perform common DevOps tasks. It supports both local execution (stdio) and remote deployment (SSE over HTTP).
 
-## Capabilities
+## Quickstart
 
-The server exposes the following tools to the connected agent:
-
-*   **`connect`**: Establish an SSH session with a remote host. Supports password, private key, or managed system identity.
-*   **`run`**: Execute shell commands on the connected server.
-*   **`read`**: Read the contents of a remote file.
-*   **`write`**: Create or overwrite a remote file.
-*   **`edit`**: Replace a specific block of text in a file (useful for configuration updates).
-*   **`list`**: List files in a directory with metadata.
-*   **`info`**: Retrieve basic OS and kernel information.
-*   **`identity`**: Retrieve the server's public key for whitelisting.
-
-## Usage
-
-### Docker (Recommended)
-
-Running via Docker ensures a clean environment and simplifies key persistence.
+### Docker (recommended)
 
 ```bash
-# Build the image
+# Build
 docker build -t ssh-mcp .
 
-# Run the server (mounting a volume for keys)
+# Run (persist SSH keys)
 docker volume create ssh-data
-docker run -p 8000:8000 -v ssh-data:/data ssh-mcp
+docker run -p 8000:8000 -v ssh-data:/data --name ssh-mcp ssh-mcp
 ```
 
-The server will be available at `http://localhost:8000/sse`.
+SSE endpoint: `http://localhost:8000/sse`
 
-### Local Installation
-
-You can also run the server directly using Python.
+### Local
 
 ```bash
 pip install .
 
-# Mode 1: CLI (Stdio) - For use with local clients like Claude Desktop
+# Stdio mode (for local MCP hosts)
 python -m ssh_mcp
 
-# Mode 2: Server (SSE) - For network access
+# SSE mode
 uvicorn ssh_mcp.server_sse:app --host 0.0.0.0 --port 8000
 ```
 
-## Configuration
+## Tool Reference
 
-The server can be configured via environment variables, though defaults are sufficient for most use cases.
+All tools are exposed via MCP. In SSE mode, tools operate within the current MCP session.
+
+### Core
+
+- `connect(host, username, port=22, private_key_path=None, password=None, alias="primary", via=None)`
+  - Open an SSH connection and store it under `alias`.
+  - `via` optionally specifies a jump host alias (see Jump Hosts).
+- `disconnect(alias=None)`
+  - Disconnect one alias (e.g. `"web1"`) or all connections if `alias` is omitted.
+- `identity()`
+  - Returns the server’s public SSH key (Ed25519) for `authorized_keys`.
+
+### Remote execution
+
+- `run(command, target="primary")`
+  - Execute a shell command on `target`.
+- `info(target="primary")`
+  - Basic OS/kernel/shell info.
+
+### Files
+
+- `read(path, target="primary")`
+  - Read a remote file.
+- `write(path, content, target="primary")`
+  - Create/overwrite a remote file.
+- `edit(path, old_text, new_text, target="primary")`
+  - Safe text replacement (fails if `old_text` is missing or ambiguous).
+- `list(path, target="primary")`
+  - List a remote directory (JSON).
+
+### Bridging (node ↔ node)
+
+- `sync(source_node, source_path, dest_node, dest_path)`
+  - Streams a file from `source_node` to `dest_node` via the MCP server.
+  - This works even if the two nodes cannot reach each other directly.
+
+### Observability
+
+- `usage(target="primary")`
+  - Quick system snapshot (load average, memory, disk).
+- `logs(path, lines=50, grep=None, target="primary")`
+  - Tail a file with safety limits (useful for large logs).
+- `ps(sort_by="cpu", limit=10, target="primary")`
+  - Top processes by CPU or memory.
+
+### Docker (requires Docker installed on the target)
+
+- `docker_ps(all=False, target="primary")`
+  - List containers.
+- `docker_logs(container_id, lines=50, target="primary")`
+  - Tail container logs.
+- `docker_op(container_id, action, target="primary")`
+  - `action` is `start`, `stop`, or `restart`.
+
+### Network
+
+- `net_stat(port=None, target="primary")`
+  - List listening ports (tries `ss` first, then `netstat`).
+- `net_dump(interface="any", count=20, filter="", target="primary")`
+  - Bounded tcpdump capture (requires `tcpdump` on the target and typically passwordless sudo).
+- `curl(url, method="GET", target="primary")`
+  - Connectivity check from the target.
+
+## Multi-node usage
+
+You can connect to multiple hosts in a single session by choosing different `alias` values.
+
+Example:
+
+1) Connect two servers:
+- `connect(host="10.0.0.10", username="ubuntu", alias="web1")`
+- `connect(host="10.0.0.11", username="ubuntu", alias="web2")`
+
+2) Run commands on a specific node:
+- `run("uptime", target="web1")`
+- `run("df -h", target="web2")`
+
+3) Copy a file across nodes (even if they can’t reach each other):
+- `sync(source_node="web1", source_path="/var/log/nginx/access.log", dest_node="web2", dest_path="/tmp/web1-access.log")`
+
+## Jump hosts (bastion)
+
+If a node is not reachable directly from where the MCP server runs, you can connect through a jump host.
+
+Example:
+
+1) Connect the bastion:
+- `connect(host="bastion.company.com", username="ubuntu", alias="bastion")`
+
+2) Connect a private node through the bastion:
+- `connect(host="10.0.1.25", username="ubuntu", alias="db1", via="bastion")`
+
+From then on, you can use:
+- `run("systemctl status postgresql", target="db1")`
+
+## Authentication
+
+By default the server keeps a managed SSH key pair in `/data` (container volume):
+- Private key: `/data/id_ed25519`
+- Public key: `/data/id_ed25519.pub` (comment: `Origon`)
+
+To use managed identity:
+1. Call `identity()` and copy the public key.
+2. Add it to `~/.ssh/authorized_keys` on the target host(s).
+3. Call `connect(...)` without `password`/`private_key_path`.
+
+You can also provide `password` or `private_key_path` per connection.
+
+## Configuration
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `PORT` | The port the SSE server listens on. | `8000` |
-| `ALLOWED_ROOT` | Restricts file operations to a specific path (e.g., `/home/user`). | `/` (Unrestricted) |
-
-## Authentication
-
-The server manages its own SSH identity to facilitate connections without passing private keys through the agent context.
-
-1.  **System Key**: On first run, the server generates an Ed25519 key pair in `/data`.
-2.  **Whitelisting**: You can ask the agent to provide its public key (via the `identity` tool) and add it to your target server's `~/.ssh/authorized_keys`.
-3.  **Connection**: The agent can then connect using the system identity by omitting credentials.
-
-Custom private keys and passwords are also supported for specific sessions.
+| `ALLOWED_ROOT` | Restricts file operations to a specific path. | `/` (unrestricted) |
 
 ## Architecture
 
-The project is structured for modularity, security, and high concurrency:
+### Data flow (SSE)
+
+- The MCP host opens an SSE session: `GET /sse`
+- Tool calls are sent as JSON-RPC: `POST /messages?session_id=...`
+- Tool results stream back over SSE
+
+### State model
+
+- Each MCP session gets its own `SSHManager` instance.
+- Each `SSHManager` can hold multiple SSH connections keyed by `alias`.
+
+### Code layout
 
 ```text
 src/ssh_mcp/
-├── server_sse.py       # SaaS/Cloud Entry Point (FastAPI)
-├── server.py           # CLI Entry Point (Stdio)
-├── ssh_manager.py      # Core Logic (Connection, Auth, Reconnect)
-└── tools/              # Capability Modules
-    ├── files.py        # SFTP Wrappers
-    └── system.py       # Command Execution
+├── server_sse.py       # SSE server (FastMCP)
+├── server.py           # stdio server (FastMCP)
+├── ssh_manager.py      # multi-connection SSH engine + sync + jump host
+└── tools/
+    ├── files.py        # read/write/edit/list wrappers
+    ├── system.py       # run/info wrappers
+    ├── monitoring.py   # usage/logs/ps
+    ├── docker.py       # docker_ps/docker_logs/docker_op
+    └── network.py      # net_stat/net_dump/curl
 ```
 
-### Concurrency & Scaling
+## Notes
 
-This server is designed for high-concurrency SaaS environments:
-
-1.  **Async I/O**: Built on `asyncio` and `asyncssh`. Waiting for a remote command to finish does *not* block the server. It can handle hundreds of concurrent agents.
-2.  **Session Isolation**: In SSE mode, every agent connection is assigned a unique Session ID. The SSH state is stored within this session context. User A's connection to Server X is completely isolated from User B's connection to Server Y.
-3.  **Thread Safety**: Internal locks ensure that multiple commands sent by a single agent are queued and executed safely in order.
-
-## Security Model
-
-1.  **Private Keys**: Never leave the container. Stored in `/data`.
-2.  **Scopes**: All file operations are validated against `ALLOWED_ROOT`.
-3.  **Isolation**: The base Docker image is minimal (`python:3.11-slim`) and lacks an SSH server, preventing agents from connecting back to localhost.
+- The network and monitoring tools depend on standard Linux utilities. Some features (like `tcpdump`) may require installing packages on the target and configuring sudo.
+- Docker tools require Docker to be installed on the target host.

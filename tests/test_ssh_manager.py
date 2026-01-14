@@ -18,20 +18,26 @@ class TestSSHManager(unittest.IsolatedAsyncioTestCase):
             result = await manager.connect("localhost", "user", password="password")
             
             self.assertIn("Connected to", result)
-            self.assertEqual(manager.cwd, "/home/user")
+            # Default alias is "primary"
+            self.assertEqual(manager.cwds["primary"], "/home/user")
+            self.assertIn("primary", manager.connections)
+            
             mock_connect.assert_called_with(
                 "localhost", 
                 port=22, 
                 username="user", 
                 password="password", 
                 client_keys=None,
-                known_hosts=None
+                known_hosts=None,
+                tunnel=None,
             )
 
     async def test_execute_cwd_tracking(self):
         manager = SSHManager()
-        manager.conn = AsyncMock()
-        manager.cwd = "/current"
+        # Setup mock connection for "primary"
+        manager.connections["primary"] = AsyncMock()
+        manager.cwds["primary"] = "/current"
+        manager.primary_alias = "primary"
         
         # Simulate execution
         # Expected output from the wrapper logic:
@@ -44,12 +50,12 @@ class TestSSHManager(unittest.IsolatedAsyncioTestCase):
         mock_result.stderr = ""
         mock_result.exit_status = 0
         
-        manager.conn.run.return_value = mock_result
+        manager.connections["primary"].run.return_value = mock_result
         
         output = await manager.execute("cd /new/path && ls")
         
-        # Verify CWD updated
-        self.assertEqual(manager.cwd, "/new/path")
+        # Verify CWD updated for primary
+        self.assertEqual(manager.cwds["primary"], "/new/path")
         
         # Verify output is clean (no delimiter)
         self.assertIn("User Output", output)
@@ -57,7 +63,9 @@ class TestSSHManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_execute_truncation(self):
         manager = SSHManager()
-        manager.conn = AsyncMock()
+        manager.connections["primary"] = AsyncMock()
+        manager.cwds["primary"] = "/tmp"
+        manager.primary_alias = "primary"
         
         long_output = "a" * 5000 + "\n___MCP_CWD_CAPTURE___\n/same/path"
         
@@ -66,7 +74,7 @@ class TestSSHManager(unittest.IsolatedAsyncioTestCase):
         mock_result.stderr = ""
         mock_result.exit_status = 0
         
-        manager.conn.run.return_value = mock_result
+        manager.connections["primary"].run.return_value = mock_result
         
         output = await manager.execute("cat bigfile")
         
