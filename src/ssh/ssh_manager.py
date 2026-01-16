@@ -31,19 +31,12 @@ class SSHManager:
         self.allowed_root = os.path.abspath(allowed_root)
 
         # Global System Key Management
-        # Hardcoded to standard persistence path
+        # Hardcoded to standard persistence path - NO FALLBACK
         self.system_key_path = "/data/id_ed25519"
         
-        # Only attempt to generate/use system key if /data exists (Docker/Production)
-        # or if we are in a dev environment where we can create it.
-        try:
-            self._ensure_system_key()
-        except Exception as e:
-            # Fallback for local dev without /data access: use ~/.ssh-mcp/
-            home_key = os.path.expanduser("~/.ssh-mcp/id_ed25519")
-            logger.info(f"Could not use /data ({e}), falling back to local storage: {home_key}")
-            self.system_key_path = home_key
-            self._ensure_system_key()
+        # Validate key storage is accessible - fail fast if not
+        self._ensure_system_key()
+
 
     def _get_alias_lock(self, alias: str) -> asyncio.Lock:
         lock = self._alias_locks.get(alias)
@@ -69,36 +62,38 @@ class SSHManager:
         return all(existing.get(k) == new.get(k) for k in fields)
 
     def _ensure_system_key(self):
-        """Ensure the global system key exists."""
+        """Ensure the global system key exists. Fail if /data is not accessible."""
         key_dir = os.path.dirname(self.system_key_path)
+        
         if not os.path.exists(key_dir):
-            try:
-                os.makedirs(key_dir, mode=0o700, exist_ok=True)
-            except OSError as e:
-                # Raise so caller can fall back to a different location
-                raise OSError(f"Could not create key directory {key_dir}: {e}") from e
-
+            raise RuntimeError(
+                f"Key directory does not exist: {key_dir}\n"
+                f"SOLUTION: Mount a persistent volume to /data. Example:\n"
+                f"  docker run -v ssh-mcp-data:/data firstfinger/ssh-mcp:latest"
+            )
+        
         if not os.access(key_dir, os.W_OK):
-            raise PermissionError(f"Key directory is not writable: {key_dir}")
+            raise RuntimeError(
+                f"Key directory is not writable: {key_dir}\n"
+                f"SOLUTION: Ensure the volume is owned by user 'mcp' (UID 1000).\n"
+                f"  Run: chown -R 1000:1000 /path/to/your/data"
+            )
         
         if not os.path.exists(self.system_key_path):
-            try:
-                logger.info(f"Generating new system key pair at {self.system_key_path}...")
-                # Generate a new key pair (Ed25519 is standard, short, and secure)
-                key = asyncssh.generate_private_key("ssh-ed25519", comment="Origon")
-                
-                # Write Private Key
-                with open(self.system_key_path, "wb") as f:
-                    f.write(key.export_private_key())
-                os.chmod(self.system_key_path, 0o600)
-                
-                # Write Public Key
-                with open(self.system_key_path + ".pub", "wb") as f:
-                    f.write(key.export_public_key())
-                
-                logger.info("System key generated successfully.")
-            except Exception as e:
-                logger.error(f"Failed to generate system key: {e}")
+            logger.info(f"[KEY] Generating new Ed25519 key pair at {self.system_key_path}")
+            key = asyncssh.generate_private_key("ssh-ed25519", comment="ssh-mcp")
+            
+            with open(self.system_key_path, "wb") as f:
+                f.write(key.export_private_key())
+            os.chmod(self.system_key_path, 0o600)
+            
+            with open(self.system_key_path + ".pub", "wb") as f:
+                f.write(key.export_public_key())
+            
+            logger.info("[KEY] System key generated successfully")
+        else:
+            logger.info(f"[KEY] Using existing key at {self.system_key_path}")
+
 
     def get_public_key(self) -> str:
         """Return the public key for authorized_keys."""

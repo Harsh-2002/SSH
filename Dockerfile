@@ -19,13 +19,14 @@ COPY src /app/src
 # Install dependencies and package
 RUN pip install --no-cache-dir .
 
-# Create a non-root user for security
-RUN useradd -m appuser && chown -R appuser:appuser /app
+# Create 'mcp' user with UID 1000 for consistent volume permissions
+RUN useradd -m -u 1000 mcp && chown -R mcp:mcp /app
 
 # Create data directory for keys (Standard Persistence Location)
-RUN mkdir -p /data && chown -R appuser:appuser /data && chmod 700 /data
+RUN mkdir -p /data && chown -R mcp:mcp /data && chmod 700 /data
 
-USER appuser
+USER mcp
+
 
 # Expose the port
 EXPOSE $PORT

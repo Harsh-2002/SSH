@@ -31,17 +31,23 @@ _GLOBAL_MANAGER: SSHManager | None = SSHManager() if _GLOBAL_STATE else None
 # Initialized immediately, started in lifespan
 _SESSION_STORE = SessionStore(timeout_seconds=_SESSION_TIMEOUT)
 
-# Configure Logging
+# Configure Logging - cleaner format for readability
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
+    format="%(asctime)s | %(levelname)-5s | %(message)s",
+    datefmt="%H:%M:%S"
 )
 logger = logging.getLogger("ssh-mcp-server")
 
 # Log Build Information
 _COMMIT = os.getenv("DEPLOYED_COMMIT", "DEV")
-logger.info(f"Starting SSH-MCP Server [Commit: {_COMMIT}]")
+logger.info("=" * 50)
+logger.info(f"SSH-MCP Server Starting")
+logger.info(f"  Commit: {_COMMIT}")
+logger.info(f"  Session Timeout: {_SESSION_TIMEOUT}s")
+logger.info(f"  Global State: {_GLOBAL_STATE}")
+logger.info("=" * 50)
+
 
 
 @asynccontextmanager
