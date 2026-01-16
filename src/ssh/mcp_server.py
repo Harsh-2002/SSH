@@ -209,15 +209,16 @@ async def list_dir(ctx: Context, path: str, target: str = "primary") -> str:
 # --- System Tools ---
 
 @mcp.tool()
-async def run(ctx: Context, command: str, target: str = "primary") -> str:
-    """Execute a shell command."""
+async def run(ctx: Context, command: str, target: str = "primary", timeout: float | None = None) -> str:
+    """Execute a shell command. Use timeout (seconds) for long-running tasks."""
     manager = await get_session_manager(ctx)
     if not manager: return "Error: Not connected."
     try:
-        return await system.run_command(manager, command, target)
+        return await system.run_command(manager, command, target, timeout=timeout)
     except Exception as e:
         logger.error(f"Command execution failed on {target}: {e}")
         return f"Error executing command: {str(e)}"
+
 
 @mcp.tool()
 async def info(ctx: Context, target: str = "primary") -> str:

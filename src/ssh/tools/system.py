@@ -23,6 +23,7 @@ async def get_system_info(manager: SSHManager, target: str | None = None) -> str
     
     return f"System Info Raw Output:\n{output}"
 
-async def run_command(manager: SSHManager, command: str, target: str | None = None) -> str:
-    """Run a generic command."""
-    return await manager.execute(command, target=target)
+async def run_command(manager: SSHManager, command: str, target: str | None = None, timeout: float | None = None) -> str:
+    """Run a generic command with optional custom timeout."""
+    return await manager.execute(command, target=target, timeout=timeout)
+

@@ -296,8 +296,15 @@ class SSHManager:
             return value.decode("utf-8", errors="replace")
         return str(value)
 
-    async def run_result(self, command: str, retry: bool = True, target: Optional[str] = None) -> Dict[str, Any]:
-        """Run a command and return structured results."""
+    async def run_result(self, command: str, retry: bool = True, target: Optional[str] = None, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """Run a command and return structured results.
+        
+        Args:
+            command: Shell command to execute
+            retry: Whether to retry on connection loss
+            target: Connection alias
+            timeout: Command timeout in seconds. If None, uses SSH_MCP_COMMAND_TIMEOUT env (default 120s)
+        """
         alias = self._resolve_alias(target)
         async with self._alias_lock_ctx([alias]):
             await self._ensure_connection(alias)
@@ -309,8 +316,9 @@ class SSHManager:
             cwd = self.cwds.get(alias, ".")
             logger.info(f"Executing command on '{alias}': {command}")
 
-            # Configurable timeout for production (default 120 seconds)
-            TIMEOUT = float(os.getenv("SSH_MCP_COMMAND_TIMEOUT", "120.0"))
+            # Use provided timeout or fall back to env var (default 120 seconds)
+            TIMEOUT = timeout if timeout is not None else float(os.getenv("SSH_MCP_COMMAND_TIMEOUT", "120.0"))
+
             # Use a unique delimiter that won't appear in normal command output
             cwd_delimiter = "___MCP_PWD_" + str(hash(alias))[-8:] + "___"
 
@@ -366,9 +374,9 @@ class SSHManager:
                 "cwd": self.cwds.get(alias, cwd),
             }
 
-    async def execute(self, command: str, retry: bool = True, target: Optional[str] = None) -> str:
+    async def execute(self, command: str, retry: bool = True, target: Optional[str] = None, timeout: Optional[float] = None) -> str:
         """Run a command and return a human-readable string."""
-        res = await self.run_result(command, retry=retry, target=target)
+        res = await self.run_result(command, retry=retry, target=target, timeout=timeout)
 
         output_parts: List[str] = []
         if res["stdout"]:

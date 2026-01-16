@@ -21,54 +21,55 @@ logger = logging.getLogger("ssh-mcp")
 def _build_postgres_cmd(container: str, username: str, password: str, database: str | None, query: str, timeout: int) -> str:
     """Build PostgreSQL command with proper authentication.
     
-    Uses single-quoted outer shell to prevent any variable expansion or command substitution.
-    All inner single quotes are escaped using the POSIX '\'' method.
+    Uses docker exec -e to pass PGPASSWORD as environment variable.
+    This avoids all shell quoting issues since password never touches the shell.
+    Query is passed via stdin using echo to handle all special characters.
     """
-    # Escape single quotes in password and query for POSIX shell
-    safe_password = password.replace("'", "'\"'\"'")
-    safe_query = query.replace("'", "'\"'\"'")
     db_flag = f"-d {database}" if database else ""
-    # Use single quotes for outer shell command - safest for special chars
-    inner_cmd = f"PGPASSWORD='{safe_password}' psql -U {username} {db_flag} -c '{safe_query}'"
-    return f"timeout {timeout} docker exec {container} sh -c '{inner_cmd}' 2>&1"
+    # Use base64 encoding to safely pass the query through all shell layers
+    import base64
+    encoded_query = base64.b64encode(query.encode()).decode()
+    # Decode on the remote side and pipe to psql
+    return f"timeout {timeout} docker exec -i -e PGPASSWORD={password} {container} sh -c 'echo {encoded_query} | base64 -d | psql -U {username} {db_flag}' 2>&1"
+
 
 
 
 
 def _build_mysql_cmd(container: str, username: str, password: str, database: str | None, query: str, timeout: int) -> str:
-    """Build MySQL command with proper authentication."""
-    safe_password = password.replace("'", "'\"'\"'")
-    safe_query = query.replace("'", "'\"'\"'")
+    """Build MySQL command with proper authentication using base64 encoding."""
+    import base64
     db_flag = database if database else ""
-    inner_cmd = f"mysql -u {username} -p'{safe_password}' {db_flag} -e '{safe_query}'"
-    return f"timeout {timeout} docker exec {container} sh -c '{inner_cmd}' 2>&1"
+    encoded_query = base64.b64encode(query.encode()).decode()
+    # Use -e for environment variable and pipe decoded query to mysql
+    return f"timeout {timeout} docker exec -i -e MYSQL_PWD={password} {container} sh -c 'echo {encoded_query} | base64 -d | mysql -u {username} {db_flag}' 2>&1"
 
 
 def _build_cqlsh_cmd(container: str, username: str | None, password: str | None, query: str, timeout: int) -> str:
-    """Build ScyllaDB/Cassandra cqlsh command with proper authentication."""
-    safe_query = query.replace("'", "'\"'\"'")
+    """Build ScyllaDB/Cassandra cqlsh command using base64 encoding."""
+    import base64
+    encoded_query = base64.b64encode(query.encode()).decode()
     auth_flags = ""
     if username:
         auth_flags += f" -u {username}"
     if password:
-        safe_password = password.replace("'", "'\"'\"'")
-        auth_flags += f" -p '{safe_password}'"
-    inner_cmd = f"cqlsh{auth_flags} -e '{safe_query}'"
-    return f"timeout {timeout} docker exec {container} sh -c '{inner_cmd}' 2>&1"
+        auth_flags += f" -p {password}"
+    # cqlsh can read from stdin with -f /dev/stdin
+    return f"timeout {timeout} docker exec -i {container} sh -c 'echo {encoded_query} | base64 -d | cqlsh{auth_flags}' 2>&1"
 
 
 def _build_mongo_cmd(container: str, username: str | None, password: str | None, database: str, query: str, timeout: int) -> str:
-    """Build MongoDB mongosh command with proper authentication."""
-    safe_query = query.replace("'", "'\"'\"'")
+    """Build MongoDB mongosh command using base64 encoding."""
+    import base64
+    encoded_query = base64.b64encode(query.encode()).decode()
     if username and password:
         from urllib.parse import quote_plus
         safe_password = quote_plus(password)
         auth = f"mongodb://{username}:{safe_password}@localhost:27017/{database}?authSource=admin"
-        inner_cmd = f"mongosh '{auth}' --quiet --eval '{safe_query}'"
-        return f"timeout {timeout} docker exec {container} sh -c '{inner_cmd}' 2>&1"
+        # Use mongosh --file /dev/stdin to read JS from stdin
+        return f"timeout {timeout} docker exec -i {container} sh -c 'echo {encoded_query} | base64 -d | mongosh {auth} --quiet --file /dev/stdin' 2>&1"
     else:
-        inner_cmd = f"mongosh {database} --quiet --eval '{safe_query}'"
-        return f"timeout {timeout} docker exec {container} sh -c '{inner_cmd}' 2>&1"
+        return f"timeout {timeout} docker exec -i {container} sh -c 'echo {encoded_query} | base64 -d | mongosh {database} --quiet --file /dev/stdin' 2>&1"
 
 
 def _parse_error(output: str, db_type: str) -> dict[str, Any] | None:
