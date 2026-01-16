@@ -2,10 +2,12 @@
 FROM python:3.11-slim
 
 # Set environment variables
+ARG COMMIT_SHA=DEV
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
-    HOST=0.0.0.0
+    HOST=0.0.0.0 \
+    DEPLOYED_COMMIT=$COMMIT_SHA
 
 # Set work directory
 WORKDIR /app

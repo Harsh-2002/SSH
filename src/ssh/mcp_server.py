@@ -38,6 +38,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ssh-mcp-server")
 
+# Log Build Information
+_COMMIT = os.getenv("DEPLOYED_COMMIT", "DEV")
+logger.info(f"Starting SSH-MCP Server [Commit: {_COMMIT}]")
+
 
 @asynccontextmanager
 async def lifespan(server: Any):
