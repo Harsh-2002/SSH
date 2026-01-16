@@ -327,8 +327,6 @@ async def db_query(
     password: str | None = None,
     target: str = "primary",
     timeout: int = 60,
-    read_only: bool = False,
-    max_rows: int | None = 1000,
 ) -> dict[str, Any]:
     """Execute a SQL/CQL/MongoDB query inside a database container.
     
@@ -343,8 +341,6 @@ async def db_query(
         password: Database password
         target: SSH connection alias
         timeout: Query timeout in seconds (default: 60)
-        read_only: If True, reject destructive queries (INSERT, UPDATE, DELETE, etc.)
-        max_rows: Limit result rows (default: 1000, None for unlimited)
         
     Returns:
         Result with query output, execution metadata, and any errors.
@@ -352,10 +348,11 @@ async def db_query(
     manager = await get_session_manager(ctx)
     if not manager: return {"error": "Not connected", "target": target}
     try:
-        return await db.db_query(manager, container_name, db_type, query, database, username, password, target, timeout, read_only, max_rows)
+        return await db.db_query(manager, container_name, db_type, query, database, username, password, target, timeout)
     except Exception as e:
         logger.error(f"DB query failed on {target}/{container_name}: {e}")
         return {"error": str(e), "target": target, "container": container_name}
+
 
 
 # --- App Entry Point ---

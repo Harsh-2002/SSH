@@ -7,6 +7,10 @@ dist/
 build/
 *.egg-info/
 .DS_Store
+
+# Data directory for SSH keys
 data/
-session-ses_444d.md
+
+# Temporary session/troubleshooting docs
+session-ses_*.md
 Expand SRE Troubleshooting Tools.md

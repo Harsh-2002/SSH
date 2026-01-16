@@ -11,16 +11,16 @@ services:
       - PORT=8000
       
       # Session Management
-      - SSH_MCP_SESSION_HEADER=X-Session-Key
-      # - SSH_MCP_SESSION_TIMEOUT=300  # Session timeout in seconds (default: 300)
-      # - SSH_MCP_GLOBAL_STATE=false  # Use global state instead of per-session (default: false)
+      - SSH_MCP_SESSION_HEADER=X-Session-Key  # [Customize header name for session tracking]
+      # - SSH_MCP_SESSION_TIMEOUT=300         # [Idle timeout in seconds before closing SSH sessions]
+      # - SSH_MCP_GLOBAL_STATE=false         # [Share one SSH manager for all clients (not recommended for multi-user)]
       
-      # Command Execution
-      # - SSH_MCP_COMMAND_TIMEOUT=120.0  # Command timeout in seconds (default: 120)
-      # - SSH_MCP_MAX_OUTPUT=51200  # Max output size in bytes (default: 51200)
+      # Performance & Limits
+      # - SSH_MCP_COMMAND_TIMEOUT=120.0       # [Max execution time for an SSH command]
+      # - SSH_MCP_MAX_OUTPUT=51200            # [Limit response size to prevent UI lag/timeouts]
       
-      # Security & Debugging
-      # - SSH_MCP_DEBUG_ASYNCSSH=false  # Enable verbose asyncssh logging (default: false)
+      # Debugging
+      # - SSH_MCP_DEBUG_ASYNCSSH=false       # [Verbose logs for troubleshooting SSH issues]
       
     restart: unless-stopped
 

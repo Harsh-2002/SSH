@@ -4,15 +4,24 @@ A Model Context Protocol (MCP) server that lets an agent connect to remote machi
 
 ## Quickstart
 
-### Docker (recommended)
+### Docker (CLI)
 
 ```bash
-# Build
-docker build -t ssh-mcp .
+# Pull and run (persisting SSH keys)
+docker run -d \
+  --name ssh-mcp \
+  -p 8000:8000 \
+  -v ssh-mcp-data:/data \
+  firstfinger/ssh-mcp:latest
+```
 
-# Run (persist SSH keys)
-docker volume create ssh-data
-docker run -p 8000:8000 -v ssh-data:/data --name ssh-mcp ssh-mcp
+### Docker Compose
+
+```bash
+# Clone and run
+git clone https://github.com/Harsh-2002/SSH-MCP.git
+cd SSH-MCP
+docker compose up -d
 ```
 
 HTTP endpoint:
@@ -80,11 +89,6 @@ All tools are exposed via MCP. Each tool accepts a `target` parameter (default: 
 
 **Supported databases:** PostgreSQL, MySQL, ScyllaDB, Cassandra, MongoDB
 
-**db_query options:**
-- `timeout` (default: 60s) - Query timeout
-- `read_only` (default: false) - Block destructive queries
-- `max_rows` (default: 1000) - Limit result rows
-
 ## Multi-node usage
 
 You can connect to multiple hosts in a single session by choosing different `alias` values.
@@ -132,13 +136,15 @@ You can also provide `password` or `private_key_path` per connection.
 
 ## Configuration
 
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `PORT` | The port the HTTP server listens on. | `8000` |
-| `ALLOWED_ROOT` | Restricts file operations to a specific path. | `/` (unrestricted) |
-| `SSH_MCP_GLOBAL_STATE` | If set to `true`, share connections across sessions. | `false` |
-| `SSH_MCP_SESSION_HEADER` | Header to use for smart session caching. | `X-Session-Key` |
-| `SSH_MCP_SESSION_TIMEOUT` | Idle timeout for cached sessions (seconds). | `300` (5 mins) |
+| Variable | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `PORT` | Integer | `8000` | The port the HTTP server listens on. |
+| `SSH_MCP_SESSION_HEADER` | String | `X-Session-Key` | Header used for smart session caching. |
+| `SSH_MCP_SESSION_TIMEOUT` | Integer | `300` | Idle timeout for cached sessions in seconds. |
+| `SSH_MCP_GLOBAL_STATE` | Boolean | `false` | If `true`, a single SSH manager is shared by all clients. |
+| `SSH_MCP_COMMAND_TIMEOUT` | Float | `120.0` | Maximum time (seconds) allowed for an SSH command. |
+| `SSH_MCP_MAX_OUTPUT` | Integer | `51200` | Maximum byte size of command output returned (approx 50KB). |
+| `SSH_MCP_DEBUG_ASYNCSSH` | Boolean | `false` | Enable verbose debug logs for the `asyncssh` library. |
 
 ## Architecture
 

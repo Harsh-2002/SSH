@@ -5,80 +5,17 @@ Database clients are executed inside Docker containers.
 
 Features:
 - Timeout protection (default: 60s)
-- Read-only mode for safety
-- Result limiting (default: 1000 rows)
 - Execution metadata
 - Structured error handling
 """
 import logging
-import re
 import time
 from typing import Any
+
 
 from .base import docker_available
 
 logger = logging.getLogger("ssh-mcp")
-
-
-# Destructive keywords per database type
-SQL_DESTRUCTIVE = {"INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE", "ALTER", "CREATE", "GRANT", "REVOKE", "MERGE"}
-CQL_DESTRUCTIVE = {"INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE", "ALTER", "CREATE", "GRANT", "REVOKE", "BATCH"}
-MONGO_DESTRUCTIVE = {
-    "insertOne", "insertMany", "insert",
-    "updateOne", "updateMany", "update", "replaceOne",
-    "deleteOne", "deleteMany", "remove",
-    "drop", "dropDatabase", "createCollection", "createIndex",
-    "renameCollection", "bulkWrite"
-}
-
-
-def _is_destructive_query(query: str, db_type: str) -> bool:
-    """Check if query contains destructive operations."""
-    db_type = db_type.lower()
-    
-    if db_type in ("mongodb", "mongo"):
-        # MongoDB: check for method names
-        for keyword in MONGO_DESTRUCTIVE:
-            if keyword in query:
-                return True
-        return False
-    elif db_type in ("scylladb", "cassandra"):
-        keywords = CQL_DESTRUCTIVE
-    else:  # postgres, mysql
-        keywords = SQL_DESTRUCTIVE
-    
-    # SQL/CQL: case-insensitive word boundary check
-    query_upper = query.upper()
-    for keyword in keywords:
-        # Match whole word only
-        if re.search(rf'\b{keyword}\b', query_upper):
-            return True
-    return False
-
-
-def _add_limit_if_needed(query: str, db_type: str, max_rows: int) -> str:
-    """Add LIMIT clause to SELECT queries if not present."""
-    if max_rows is None:
-        return query
-    
-    db_type = db_type.lower()
-    query_upper = query.upper().strip()
-    
-    # Only add LIMIT to SELECT-like queries
-    if db_type in ("mongodb", "mongo"):
-        # MongoDB: add .limit() if not present
-        if ".find(" in query and ".limit(" not in query:
-            # Insert before final ) or at end
-            if query.rstrip().endswith(")"):
-                return query.rstrip()[:-1] + f").limit({max_rows})"
-            else:
-                return query + f".limit({max_rows})"
-    else:
-        # SQL/CQL: add LIMIT if SELECT and no LIMIT present
-        if query_upper.startswith("SELECT") and "LIMIT" not in query_upper:
-            return query.rstrip().rstrip(";") + f" LIMIT {max_rows};"
-    
-    return query
 
 
 def _build_postgres_cmd(container: str, username: str, password: str, database: str | None, query: str, timeout: int) -> str:
@@ -161,8 +98,6 @@ async def db_query(
     password: str | None = None,
     target: str = "primary",
     timeout: int = 60,
-    read_only: bool = False,
-    max_rows: int | None = 1000,
 ) -> dict[str, Any]:
     """Execute a SQL/CQL/MongoDB query inside a database container.
     
@@ -175,8 +110,6 @@ async def db_query(
         password: Database password (required for authenticated databases)
         target: SSH connection alias
         timeout: Query timeout in seconds (default: 60)
-        read_only: If True, reject destructive queries (INSERT, UPDATE, DELETE, etc.)
-        max_rows: Limit result rows (default: 1000, None for unlimited)
         
     Returns:
         {
@@ -195,8 +128,6 @@ async def db_query(
             "container": container_name,
             "execution_time_ms": 0,
             "timeout": timeout,
-            "read_only": read_only,
-            "max_rows": max_rows
         },
         "error": None
     }
@@ -206,16 +137,6 @@ async def db_query(
         return result
     
     db_type_lower = db_type.lower()
-    
-    # Read-only check
-    if read_only and _is_destructive_query(query, db_type_lower):
-        result["error"] = f"Query rejected: read_only=True but query contains destructive operations"
-        result["metadata"]["blocked_reason"] = "destructive_query"
-        return result
-    
-    # Apply result limiting
-    query = _add_limit_if_needed(query, db_type_lower, max_rows)
-    result["query"] = query  # Update with potentially modified query
     
     # Escape single quotes in query for shell safety
     safe_query = query.replace("'", "'\\''")
