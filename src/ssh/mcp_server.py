@@ -106,19 +106,17 @@ async def connect(
     port: int = 22, 
     private_key_path: str | None = None, 
     password: str | None = None,
-    alias: str = "primary",
+    alias: str | None = None,
     via: str | None = None,
 ) -> str:
     """
     Connect to a remote server. Creates a persistent session.
     Args:
         alias: Unique name for this connection (e.g. 'web1', 'db1').
+               If omitted, auto-generates as 'user@host'.
     """
-    # Cleanup old session if it exists? No, we support multi-connection now.
-    # We need to initialize the manager if it doesn't exist.
     manager = await get_session_manager(ctx)
     if manager is None:
-        # Per-session mode: create a manager for this session.
         manager = SSHManager()
         setattr(ctx.session, "ssh_manager", manager)
 
@@ -128,6 +126,7 @@ async def connect(
     except Exception as e:
         logger.error(f"Connection failed to {host}:{port} as {username}: {e}")
         return f"Error connecting: {str(e)}"
+
 
 @mcp.tool()
 async def disconnect(ctx: Context, alias: str | None = None) -> str:

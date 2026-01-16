@@ -75,7 +75,7 @@ All tools accept a `target` parameter (default: `"primary"`) to specify the SSH 
 ### Core & System
 | Tool | Description |
 |------|-------------|
-| `connect(host,...)` | Open SSH connection (supports password, key, or managed identity) |
+| `connect(host,...)` | Open SSH connection. Alias auto-generated as `user@host` if not provided. |
 | `disconnect(alias)` | Close one or all SSH connections |
 | `identity()` | Get server's public key for `authorized_keys` |
 | `info()` | Get remote OS/kernel/shell information |

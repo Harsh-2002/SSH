@@ -129,22 +129,69 @@ class SSHManager:
             self._alias_locks[alias] = lock
         return lock
 
+    def _generate_unique_alias(self, username: str, host: str) -> str:
+        """Generate unique alias in format: user@host or user@host-N.
+        
+        Args:
+            username: SSH username
+            host: Hostname or IP
+            
+        Returns:
+            Unique alias string that doesn't conflict with existing connections.
+        """
+        base_alias = f"{username}@{host}"
+        
+        # Try base alias first
+        if base_alias not in self.connections:
+            return base_alias
+        
+        # Add counter if conflict
+        for counter in range(2, 102):
+            candidate = f"{base_alias}-{counter}"
+            if candidate not in self.connections:
+                return candidate
+        
+        raise RuntimeError(f"Unable to generate unique alias for {username}@{host} (too many connections)")
+
     async def connect(self, host: str, username: str, port: int = 22, 
                       private_key_path: Optional[str] = None, 
                       password: Optional[str] = None,
-                      alias: str = "primary",
+                      alias: Optional[str] = None,
                       via: Optional[str] = None) -> str:
         """
         Establishes an SSH connection and saves credentials for auto-reconnect.
 
         Args:
-            alias: Connection name ("web1", "db1", etc.).
-            via: Optional jump host alias. If set, the connection is tunneled over
-                 the existing SSH connection named by `via`.
+            host: Hostname or IP address.
+            username: SSH username.
+            port: SSH port (default 22).
+            private_key_path: Path to private key file.
+            password: SSH password.
+            alias: Connection name. If None, auto-generates as 'user@host'.
+            via: Optional jump host alias for tunneling.
+            
+        Returns:
+            Connection status message including the alias used.
         """
         async with self._lock:
+            # Auto-generate alias if not provided
+            if alias is None:
+                alias = self._generate_unique_alias(username, host)
+                logger.info(f"Auto-generated alias: '{alias}'")
+            
             if via == alias:
                 raise ValueError("'via' cannot be the same as 'alias'.")
+
+            # FAIL ON CONFLICT: If alias already exists with different credentials
+            if alias in self.connections:
+                existing_creds = self._credentials.get(alias)
+                if existing_creds:
+                    existing_host = existing_creds.get("host")
+                    existing_user = existing_creds.get("username")
+                    raise ValueError(
+                        f"Alias '{alias}' already exists for {existing_user}@{existing_host}. "
+                        f"Use disconnect('{alias}') first or choose a different alias."
+                    )
 
             # Fallback to System Key if no auth provided
             used_key_path = private_key_path
@@ -164,6 +211,7 @@ class SSHManager:
                 "via": via,
             }
 
+            # Check if same credentials - reuse existing session
             existing = self._credentials.get(alias)
             if existing and alias in self.connections and self._creds_equal(existing, new_creds):
                 logger.info(f"Alias '{alias}' already connected to {username}@{host}. Reusing existing session.")
@@ -180,6 +228,7 @@ class SSHManager:
                 self.primary_alias = "primary"
                 
             return msg
+
 
     async def _connect_internal(self, alias: str) -> str:
         """Internal connection logic using stored credentials."""
