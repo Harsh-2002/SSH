@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Background -->
+  <rect width="256" height="256" fill="#FAFAFA" rx="40"/>
+  
+  <!-- Border -->
+  <rect width="256" height="256" fill="none" stroke="#121212" stroke-width="12" rx="40"/>
+  
+  <!-- Simple terminal window icon -->
+  <rect x="50" y="60" width="156" height="136" fill="none" stroke="#121212" stroke-width="10" rx="12"/>
+  
+  <!-- Top bar -->
+  <rect x="50" y="60" width="156" height="30" fill="#FFDE59" rx="12" ry="12"/>
+  
+  <!-- Command prompt -->
+  <text x="70" y="115" font-family="monospace" font-size="20" fill="#121212" font-weight="bold">&gt;</text>
+  <line x1="100" y1="110" x2="180" y2="110" stroke="#121212" stroke-width="6" stroke-linecap="round"/>
+  
+  <!-- Cursor blink -->
+  <rect x="70" y="140" width="6" height="20" fill="#121212" opacity="0.7"/>
+</svg>
