@@ -9,7 +9,8 @@ dependencies = [
     "asyncssh>=2.14.0",
     "pydantic>=2.0.0",
     "fastapi>=0.100.0",
-    "uvicorn[standard]>=0.20.0"
+    "uvicorn[standard]>=0.20.0",
+    "dpkt>=1.9.8"
 ]
 
 [project.scripts]

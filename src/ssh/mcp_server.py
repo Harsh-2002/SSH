@@ -3,7 +3,7 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP, Context
 from .ssh_manager import SSHManager
 from .session_store import SessionStore
-from .tools import files, system, monitoring, docker, network
+from .tools import files, system, monitoring, docker, network, voip
 from .tools import services_universal, db, search, package, journal, diagnose
 
 import os
@@ -305,6 +305,210 @@ async def net_stat(ctx: Context, port: int | None = None, target: str = "primary
     except Exception as e:
         return {"error": str(e), "target": target, "port": port}
 
+# --- VoIP Tools ---
+
+@mcp.tool()
+async def voip_sip_capture(
+    ctx: Context,
+    container: str,
+    duration: int = 30,
+    port: int | None = None,
+    protocol: str | None = None,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Capture SIP signaling with sngrep (PCAP output)."""
+    manager = await get_session_manager(ctx)
+    if not manager:
+        return {"error": "not_connected", "target": target}
+    try:
+        return await voip.voip_sip_capture(manager, container, duration, port, protocol, target)
+    except Exception as e:
+        return {"error": str(e), "target": target, "container": container}
+
+
+@mcp.tool()
+async def voip_call_flow(
+    ctx: Context,
+    container: str,
+    pcap_file: str,
+    call_id: str | None = None,
+    phone_number: str | None = None,
+    max_bytes: int | None = None,
+    summary_only: bool = False,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Parse SIP call flow from a PCAP file captured via sngrep (optional number filter)."""
+    manager = await get_session_manager(ctx)
+    if not manager:
+        return {"error": "not_connected", "target": target}
+    try:
+        return await voip.voip_call_flow(
+            manager,
+            container,
+            pcap_file,
+            call_id,
+            phone_number,
+            max_bytes,
+            summary_only,
+            target,
+        )
+    except Exception as e:
+        return {"error": str(e), "target": target, "container": container}
+
+
+@mcp.tool()
+async def voip_registrations(
+    ctx: Context,
+    container: str,
+    pcap_file: str,
+    max_bytes: int | None = None,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Extract SIP registration outcomes from a PCAP file."""
+    manager = await get_session_manager(ctx)
+    if not manager:
+        return {"error": "not_connected", "target": target}
+    try:
+        return await voip.voip_registrations(manager, container, pcap_file, max_bytes, target)
+    except Exception as e:
+        return {"error": str(e), "target": target, "container": container}
+
+
+@mcp.tool()
+async def voip_call_stats(
+    ctx: Context,
+    container: str,
+    pcap_file: str,
+    max_bytes: int | None = None,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Aggregate SIP call statistics from a PCAP file."""
+    manager = await get_session_manager(ctx)
+    if not manager:
+        return {"error": "not_connected", "target": target}
+    try:
+        return await voip.voip_call_stats(manager, container, pcap_file, max_bytes, target)
+    except Exception as e:
+        return {"error": str(e), "target": target, "container": container}
+
+
+@mcp.tool()
+async def voip_extract_sdp(
+    ctx: Context,
+    container: str,
+    pcap_file: str,
+    call_id: str | None = None,
+    max_bytes: int | None = None,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Extract SDP (media negotiation) from SIP messages in a PCAP."""
+    manager = await get_session_manager(ctx)
+    if not manager:
+        return {"error": "not_connected", "target": target}
+    try:
+        return await voip.voip_extract_sdp(manager, container, pcap_file, call_id, max_bytes, target)
+    except Exception as e:
+        return {"error": str(e), "target": target, "container": container}
+
+
+@mcp.tool()
+async def voip_packet_check(
+    ctx: Context,
+    container: str,
+    duration: int = 5,
+    interface: str = "any",
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Quick check for SIP packets on 5060/5061 using tcpdump."""
+    manager = await get_session_manager(ctx)
+    if not manager:
+        return {"error": "not_connected", "target": target}
+    try:
+        return await voip.voip_packet_check(manager, container, duration, interface, target)
+    except Exception as e:
+        return {"error": str(e), "target": target, "container": container}
+
+
+@mcp.tool()
+async def voip_network_capture(
+    ctx: Context,
+    container: str,
+    duration: int = 30,
+    interface: str = "any",
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Capture SIP packets at the network layer using tcpdump."""
+    manager = await get_session_manager(ctx)
+    if not manager:
+        return {"error": "not_connected", "target": target}
+    try:
+        return await voip.voip_network_capture(manager, container, duration, interface, target)
+    except Exception as e:
+        return {"error": str(e), "target": target, "container": container}
+
+
+@mcp.tool()
+async def voip_rtp_capture(
+    ctx: Context,
+    container: str,
+    duration: int = 10,
+    interface: str = "any",
+    port_range: str = "50000-60000",
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Capture RTP packets on the configured RTP port range."""
+    manager = await get_session_manager(ctx)
+    if not manager:
+        return {"error": "not_connected", "target": target}
+    try:
+        return await voip.voip_rtp_capture(manager, container, duration, interface, port_range, target)
+    except Exception as e:
+        return {"error": str(e), "target": target, "container": container}
+
+
+@mcp.tool()
+async def voip_network_diagnostics(
+    ctx: Context,
+    host: str,
+    ports: list[int] | None = None,
+    ping_count: int = 3,
+    traceroute: bool = True,
+    timeout_seconds: int = 15,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Run ping, traceroute/tracepath, and TCP reachability checks."""
+    manager = await get_session_manager(ctx)
+    if not manager:
+        return {"error": "not_connected", "target": target}
+    try:
+        return await voip.voip_network_diagnostics(
+            manager,
+            host,
+            ports,
+            ping_count,
+            traceroute,
+            timeout_seconds,
+            target,
+        )
+    except Exception as e:
+        return {"error": str(e), "target": target, "host": host}
+
+
+@mcp.tool()
+async def voip_discover_containers(
+    ctx: Context,
+    keywords: list[str] | None = None,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Discover VoIP-related containers by name/image keywords."""
+    manager = await get_session_manager(ctx)
+    if not manager:
+        return {"error": "not_connected", "target": target}
+    try:
+        return await voip.voip_discover_containers(manager, keywords, target)
+    except Exception as e:
+        return {"error": str(e), "target": target}
+
 # --- Service Tools ---
 
 @mcp.tool()
@@ -507,4 +711,3 @@ async def diagnose_system(
 # --- App Entry Point ---
 # This module is imported by server_all.py which handles the actual HTTP transport
 # For standalone usage, use: uvicorn ssh_mcp.server_all:app --host 0.0.0.0 --port 8000
-

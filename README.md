@@ -90,24 +90,62 @@ All tools accept a `target` parameter (default: `"primary"`) to specify the SSH 
 | `list_dir(path)` | List directory contents |
 | `sync(src, dst, ...)` | Stream file directly between two remote nodes |
 
-### DevOps & Monitoring
+### Monitoring & Logs
 | Tool | Description |
 |------|-------------|
-| `search_files(pattern)` | Find files using POSIX `find` |
-| `search_text(pattern)` | Search in files using `grep` |
-| `package_manage(pkg)` | Install/check packages (apt, apk, dnf, yum) |
-| `diagnose_system()` | One-click SRE health check (Load, OOM, Disk) |
-| `journal_read()` | Read system logs (systemd/syslog) |
-| `docker_ps()` | List Docker containers |
+| `usage()` | CPU/RAM/Disk usage summary |
+| `logs(path, lines=50, grep=None)` | Read recent logs from a file |
+| `ps(sort_by="cpu", limit=10)` | List top processes |
+| `journal_read(...)` | Read system logs (systemd/syslog) |
+| `dmesg_read(...)` | Read kernel ring buffer |
+| `diagnose_system()` | One-click SRE health check (load, OOM, disk, failed services) |
+
+### Networking
+| Tool | Description |
+|------|-------------|
+| `net_stat(port=None)` | Check listening ports (ss/netstat) |
+
+### Docker
+| Tool | Description |
+|------|-------------|
+| `docker_ps(all=False)` | List Docker containers |
+
+### Services
+| Tool | Description |
+|------|-------------|
+| `list_services(failed_only=False)` | List system services (systemd/OpenRC) |
+
+### Search
+| Tool | Description |
+|------|-------------|
+| `search_files(pattern, path="/", ...)` | Find files using POSIX `find` |
+| `search_text(pattern, path, ...)` | Search in files using `grep` |
+
+### Package Management
+| Tool | Description |
+|------|-------------|
+| `package_manage(action, pkg)` | Install/remove/check packages (apt, apk, dnf, yum) |
 
 ### Database
 | Tool | Description |
 |------|-------------|
 | `db_query(...)` | Execute SQL/CQL/MongoDB query in container |
-| `db_schema(...)` | Get database/collection schema |
-| `list_db_containers()` | Find database containers on host |
 
 **Supported DBs:** PostgreSQL, MySQL, ScyllaDB, Cassandra, MongoDB
+
+### VoIP Troubleshooting
+| Tool | Description |
+|------|-------------|
+| `voip_discover_containers(keywords=None)` | Find VoIP containers by name/image keywords (default: gw, media, fs, sbc, sw) |
+| `voip_sip_capture(container, duration=30, port=None, protocol=None)` | Capture SIP to PCAP with sngrep |
+| `voip_call_flow(container, pcap_file, call_id=None, phone_number=None, max_bytes=None, summary_only=False)` | Parse SIP call flows |
+| `voip_registrations(container, pcap_file, max_bytes=None)` | Extract REGISTER outcomes |
+| `voip_call_stats(container, pcap_file, max_bytes=None)` | Aggregate SIP stats |
+| `voip_extract_sdp(container, pcap_file, call_id=None, max_bytes=None)` | Extract SDP (codecs, RTP ports) |
+| `voip_packet_check(container, duration=5)` | Quick SIP packet presence check |
+| `voip_network_capture(container, duration=30)` | Capture SIP packets with tcpdump |
+| `voip_rtp_capture(container, duration=10, port_range="50000-60000")` | Verify RTP flow |
+| `voip_network_diagnostics(host, ports=None, ...)` | Ping/traceroute/TCP reachability checks |
 
 ## Advanced Usage
 
