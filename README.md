@@ -7,54 +7,38 @@ A high-performance SSH connection management server implementing the [Model Cont
 
 ## Features
 
-- **42 Production-Ready Tools** - Core SSH, file operations, Docker, database, monitoring, and VoIP
-- **Persistent Sessions** - SSH connections survive across multiple MCP requests
-- **Jump Host Support** - Connect through bastion hosts with the `via` parameter
-- **Session Isolation** - Per-client connection pools with automatic cleanup
-- **SFTP Native** - Direct file operations without external binaries
-- **Auto-Reconnect** - Transparent reconnection on connection loss
-- **Zero Dependencies** - Single static binary, no runtime requirements
+- **42 Production Tools** - SSH, SFTP, Docker, databases, system monitoring, and VoIP diagnostics
+- **Persistent SSH Sessions** - Connection pooling with automatic lifecycle management
+- **Jump Host/Bastion Support** - Multi-hop SSH tunneling via `via` parameter
+- **Session Isolation** - Thread-safe per-client connection pools with configurable cleanup
+- **Single Static Binary** - Zero runtime dependencies, distroless container deployment
 
 ## Quick Start
 
-### Build from Source
-
 ```bash
-git clone https://github.com/harsh-2002/SSH-MCP.git
-cd SSH-MCP
+# Build
 go build -o ssh-mcp ./cmd/server
-```
 
-### Run
+# Run HTTP server
+./ssh-mcp                    # Default: :8000
+PORT=9090 ./ssh-mcp          # Custom port
 
-```bash
-# Run (Defaults to HTTP on port 8000)
-./ssh-mcp
-
-# Run on custom port via Env Var
-PORT=9090 ./ssh-mcp
-
-# Stdio mode (for local MCP hosts like Claude Desktop)
+# Run stdio mode (local MCP hosts)
 ./ssh-mcp -mode stdio
-```
 
-### Docker
-
-```bash
+# Docker
 docker build -t ssh-mcp .
-docker run -v /path/to/keys:/data ssh-mcp
+docker run -v /path/to/keys:/data -p 8000:8000 ssh-mcp
 ```
 
-## CLI Flags
+## Configuration
 
-| Flag | Default | Description |
-|------|---------|-------------|
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
-| `-mode` | `SSH_MCP_MODE` | `http` | Transport mode: `stdio` or `http` |
-| `-port` | `PORT` | `8000` | HTTP server port (http mode only) |
-| `-debug` | `SSH_MCP_DEBUG` | `false` | Enable debug logging |
-| `-global` | `SSH_MCP_GLOBAL` | `false` | Use single shared SSH manager for all sessions |
+| `-mode` | `SSH_MCP_MODE` | `http` | Transport: `stdio` or `http` |
+| `-port` | `PORT` | `8000` | HTTP port |
+| `-debug` | `SSH_MCP_DEBUG` | `false` | Verbose logging |
+| `-global` | `SSH_MCP_GLOBAL` | `false` | Shared SSH manager (single-user mode) |
 
 ## Tools Reference
 
@@ -180,128 +164,53 @@ docker run -v /path/to/keys:/data ssh-mcp
 
 ## Session Management
 
-### Session Isolation Architecture
+### Isolation Modes
 
-Each MCP client gets its own **completely isolated** connection pool with strong security boundaries:
+- **Session-based** (default): Auto-generated UUIDv7 per client connection
+- **Header-based**: `X-Session-Key` header for sticky routing and load balancer affinity
+- **Global mode**: Single shared manager (`-global` flag) for single-user environments
 
-#### Isolation Modes
+### Architecture
 
-- **Session-based** (default): Automatic isolation by UUIDv7 session ID
-  - Each client connection gets a unique time-ordered session ID
-  - Sessions cannot access each other's SSH connections
-  - Automatic cleanup after client disconnects
+- Thread-safe pool isolation with mutex protection (verified with `-race`)
+- Independent SSH connection managers per session/key
+- Idle timeout: 5 minutes (header-based sessions)
+- Graceful shutdown with connection cleanup
 
-- **Header-based**: Use `X-Session-Key` header for sticky sessions
-  - Same key = same connection pool (perfect for load balancers)
-  - Different keys = completely isolated pools
-  - Each key maintains its own SSH managers and connections
-  - **Critical**: Pool isolation is thread-safe and verified with race detector
-  
-- **Global mode**: Single shared pool with `-global` flag
-  - All sessions share one connection manager
-  - Suitable for single-user development environments only
+## System Architecture
 
-#### Security Guarantees
+```
+MCP Client → [Session Pool] → SSH Connection Manager → Remote Hosts
+             │                                       ↓
+             ├─ Session A (UUIDv7)              [Host A, Host B]
+             ├─ Session B (X-Session-Key: X)    [Host C via Bastion]
+             └─ Session C (X-Session-Key: Y)    [Host D]
+```
 
-✅ **Virtual Isolation Layer**:
-- Each `X-Session-Key` value creates a separate connection pool
-- No cross-session access - sessions are siloed at the code level
-- Concurrent access is mutex-protected (verified with `-race` detector)
-- Memory isolation prevents session data leakage
-
-✅ **Scalability**:
-- Handles thousands of concurrent session pools
-- Go's efficient memory management (vs Python GIL)
-- Lock-free fast paths for high-throughput scenarios
-- Adaptive cleanup prevents memory exhaustion
-
-### Session Lifecycle
-
-| Event | Behavior |
-|-------|----------|
-| Client connects | New session pool created |
-| Idle timeout (5 min) | Header-based sessions cleaned up |
-| Client disconnects | Session pool destroyed |
-| Server shutdown | All connections closed gracefully |
+Each session maintains isolated SSH connections with independent lifecycle management.
 
 ## Architecture
 
-```mermaid
-graph TD
-    subgraph "MCP Server"
-        subgraph "Connection Pool"
-            SM1[Session Manager 1]
-            SM2[Session Manager 2]
-            SM3[Session Manager 3]
-        end
-        
-        SM1 --> |"SSH (SFTP/Exec)"| C1[Client: host-a]
-        SM1 --> |"SSH (SFTP/Exec)"| C2[Client: host-b]
-        
-        SM2 --> |"SSH + Jump"| C3[Client: internal]
-        C3 -.-> |Tunnel| J1[Bastion]
-    end
-```
+### Concurrency & Safety
 
-### Component Interaction
+- Native goroutine-based concurrency with fine-grained locking
+- Race detector validation (`go test -race`) under high load
+- Lock-free atomic operations for session metadata
+- Per-alias mutex synchronization
 
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│                           MCP Server                             │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │                        Session Pool                        │  │
-│  │                                                            │  │
-│  │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐       │  │
-│  │  │  Manager A  │   │  Manager B  │   │  Manager C  │       │  │
-│  │  │ (Session 1) │   │ (Session 2) │   │ (Header X)  │       │  │
-│  │  └──────┬──────┘   └──────┬──────┘   └──────┬──────┘       │  │
-│  │         │                 │                 │              │  │
-│  └─────────┼─────────────────┼─────────────────┼──────────────┘  │
-│            │                 │                 │                 │
-│  ┌─────────▼─────────────────▼─────────────────▼──────────────┐  │
-│  │                      SSH Connections                       │  │
-│  │                                                            │  │
-│  │  ┌──────────┐      ┌──────────┐      ┌──────────┐          │  │
-│  │  │  User @  │      │  User @  │      │  User @  │          │  │
-│  │  │  Host A  │      │  Host B  │      │  JumpBox │          │  │
-│  │  └──────────┘      └──────────┘      └────┬─────┘          │  │
-│  │                                           │ (Tunnel)       │  │
-│  │                                      ┌────▼─────┐          │  │
-│  │                                      │  Target  │          │  │
-│  │                                      └──────────┘          │  │
-│  └────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-```
+### Performance
 
-## Performance & Architecture
+- Single 11MB static binary with zero runtime dependencies
+- Zero-copy SFTP streaming
+- Native PCAP parsing (pure Go, no CGO)
+- Adaptive session cleanup (5-minute idle timeout)
 
-### Why Go vs Python?
+### Security
 
-**Memory Management**:
-- ✅ No Global Interpreter Lock (GIL) - true parallel execution
-- ✅ Efficient goroutines vs heavy OS threads
-- ✅ Stack-based allocation reduces GC pressure
-- ✅ ~10x lower memory footprint per connection
-
-**Concurrency**:
-- ✅ Native lightweight concurrency (goroutines)
-- ✅ Lock-free atomic operations for session tracking
-- ✅ Fine-grained mutex control (per-alias locking)
-- ✅ Verified with race detector under 50+ concurrent goroutines
-
-**Performance**:
-- ✅ Single 11MB binary vs Python + dependencies
-- ✅ Instant startup (no interpreter initialization)
-- ✅ Zero-copy SFTP streaming
-- ✅ Native PCAP parsing without CGO overhead
-
-### Safety Guarantees
-
-- **Strict Concurrency**: Validated with race detection checks (`-race`) to ensure thread safety under high load.
-- **Security Verified**: Path traversal protections rigorously tested against exploit attempts.
-- **Resource Efficient**: Adaptive cleanup reaps idle sessions after 5 minutes to prevent memory leaks.
-- **Isolation Tested**: Concurrency tests verify session pools never cross-contaminate.
+- Path traversal protection with security test enforcement
+- Session pool isolation (thread-safe, no cross-contamination)
+- Ed25519 key generation with 0600 permissions
+- Distroless container runtime
 
 ## Project Structure
 
@@ -327,89 +236,39 @@ graph TD
 
 ## Development
 
-### Requirements
-
-- Go 1.25+
-- libpcap-dev (for VoIP tests)
-
-### Build & Test
-
 ```bash
-# Build binary
+# Build
 go build -o ssh-mcp ./cmd/server
 
-# Run strict validation tests (Recommended)
+# Test with race detection
 go test ./... -v -race
-```
 
-### Docker Build
-
-```bash
+# Docker build
 docker build --build-arg COMMIT_SHA=$(git rev-parse --short HEAD) -t ssh-mcp .
 ```
 
-## Deployment Guide
+**Requirements**: Go 1.25+, libpcap-dev (VoIP tools)
 
-### Deployment Models
+## Deployment
 
-**Recommended for Production**:
-- Behind reverse proxy (nginx/Traefik) with TLS termination
-- Private network/VPN only (not exposed to public internet)
-- Corporate firewall with restricted access
+### Production Recommendations
 
-**Additional Security** (see [SECURITY.md](SECURITY.md)):
-- Authentication: API keys, OAuth, or mTLS
-- Rate limiting at proxy level
-- Audit logging to SIEM
+- Deploy behind reverse proxy (TLS termination)
+- Private network or VPN-restricted access
+- See [SECURITY.md](SECURITY.md) for authentication and hardening
 
-### Protocol Support
-- **SSH/SFTP**: Native support for file transfer and command execution.
-- **HTTP (MCP)**: Streamable HTTP transport with SSE support.
-  - Endpoint: `/mcp` (handles both POST and GET/SSE)
-  - Session persistence via `X-Session-Key` header
-- **VoIP**: SIP/RTP PCAP analysis capabilities included.
+### Endpoints
 
-### Load Balancing Strategy
+- `/mcp` - MCP protocol (POST/GET, SSE support)
+- Session persistence: `X-Session-Key` header
 
-For multi-instance deployments, use **Consistent Hashing** on the `X-Session-Key` header to ensure sticky sessions:
+### Load Balancing
 
-```nginx
-upstream mcp_cluster {
-    # Hash on X-Session-Key for session affinity
-    hash $http_x_session_key consistent;
-    server mcp-1:8000;
-    server mcp-2:8000;
-    server mcp-3:8000;
-}
-
-server {
-    listen 443 ssl;
-    server_name ssh-mcp.internal.example.com;
-    
-    # TLS configuration
-    ssl_certificate /etc/ssl/certs/mcp.crt;
-    ssl_certificate_key /etc/ssl/private/mcp.key;
-    
-    location /mcp {
-        proxy_pass http://mcp_cluster;
-        proxy_http_version 1.1;
-        
-        # Preserve X-Session-Key for routing
-        proxy_set_header X-Session-Key $http_x_session_key;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
-
-**Why Sticky Sessions?**
-- Each `X-Session-Key` maintains persistent SSH connections on one instance
-- Routing the same key to different instances would lose connection state
-- Consistent hashing ensures minimal disruption on instance failures
+Use consistent hashing on `X-Session-Key` for sticky routing.
 
 ## Contributing
 
-Contributions are welcome! Please ensure all new code includes unit tests and passes the strict validation suite (`go test -race`).
+Contributions welcome. Ensure tests pass with `go test -race` before submitting.
 
 ## License
 
