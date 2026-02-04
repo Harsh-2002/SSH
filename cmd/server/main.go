@@ -32,14 +32,34 @@ const (
 
 // UUIDv7SessionManager generates time-ordered UUIDv7 session IDs
 // for professional, sortable session identification.
+// Includes automatic cleanup of old terminated sessions to prevent memory leaks.
 type UUIDv7SessionManager struct {
 	mu         sync.RWMutex
-	terminated map[string]bool
+	terminated map[string]time.Time // sessionID -> termination time
 }
 
 func NewUUIDv7SessionManager() *UUIDv7SessionManager {
-	return &UUIDv7SessionManager{
-		terminated: make(map[string]bool),
+	mgr := &UUIDv7SessionManager{
+		terminated: make(map[string]time.Time),
+	}
+	// Cleanup old terminated sessions every 10 minutes
+	go mgr.cleanupLoop()
+	return mgr
+}
+
+// cleanupLoop removes terminated sessions older than 1 hour.
+func (m *UUIDv7SessionManager) cleanupLoop() {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		m.mu.Lock()
+		cutoff := time.Now().Add(-1 * time.Hour)
+		for id, terminatedAt := range m.terminated {
+			if terminatedAt.Before(cutoff) {
+				delete(m.terminated, id)
+			}
+		}
+		m.mu.Unlock()
 	}
 }
 
@@ -56,7 +76,7 @@ func (m *UUIDv7SessionManager) Validate(sessionID string) (bool, error) {
 	
 	// Check if terminated
 	m.mu.RLock()
-	isTerminated := m.terminated[sessionID]
+	_, isTerminated := m.terminated[sessionID]
 	m.mu.RUnlock()
 	
 	return isTerminated, nil
@@ -69,7 +89,7 @@ func (m *UUIDv7SessionManager) Terminate(sessionID string) (bool, error) {
 	}
 	
 	m.mu.Lock()
-	m.terminated[sessionID] = true
+	m.terminated[sessionID] = time.Now()
 	m.mu.Unlock()
 	
 	log.Printf("[SESSION] Terminated: %s", sessionID)
@@ -109,9 +129,6 @@ func main() {
 	} else {
 		log.SetFlags(log.LstdFlags)
 	}
-
-	// Injected at build time
-	var commitSHA = "dev"
 	
 	log.Printf("Starting %s (commit=%s, mode=%s, port=%s, global=%v)", serverName, commitSHA, *mode, *port, *globalState)
 
@@ -135,7 +152,7 @@ func main() {
 	case "stdio":
 		runStdio(mcpServer)
 	case "http":
-		runHTTP(mcpServer, *port)
+		runHTTP(mcpServer, *port, pool)
 	default:
 		log.Fatalf("Unknown mode: %s. Use 'stdio' or 'http'.", *mode)
 	}
@@ -198,7 +215,7 @@ const sessionKeyHeader = "X-Session-Key"
 // - Authorization: Implement per-user access controls
 // - Rate Limiting: Add request throttling
 // - Audit Logging: Track all tool invocations with user context
-func runHTTP(s *server.MCPServer, port string) {
+func runHTTP(s *server.MCPServer, port string, pool *ssh.Pool) {
 	// Use StreamableHTTPServer with UUIDv7 session IDs and security middleware
 	httpSrv := server.NewStreamableHTTPServer(s,
 		// Use time-ordered UUIDv7 for professional session IDs
@@ -241,11 +258,15 @@ func runHTTP(s *server.MCPServer, port string) {
 	<-sigChan
 	log.Println("[HTTP] Shutting down...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Close SSH pool first (closes all SSH connections)
+	pool.Close()
+
+	// Short timeout for HTTP - SSE connections may not close gracefully
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		log.Printf("[HTTP] Shutdown error: %v", err)
+		log.Printf("[HTTP] Shutdown: %v (SSE connections force-closed)", err)
 	}
 
 	log.Println("[HTTP] Server stopped")

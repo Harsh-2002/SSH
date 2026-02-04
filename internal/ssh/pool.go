@@ -272,10 +272,16 @@ func (p *Pool) reap() {
 	}
 }
 
-// Close closes all managers.
+// Close closes all managers. Safe to call multiple times.
 func (p *Pool) Close() {
-	// Stop cleanup loop
-	close(p.stopCleanup)
+	// Use select to safely close channel (prevents panic on double-close)
+	select {
+	case <-p.stopCleanup:
+		// Already closed
+		return
+	default:
+		close(p.stopCleanup)
+	}
 
 	// Close global
 	if p.global != nil {
