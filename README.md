@@ -15,18 +15,38 @@ A high-performance SSH connection management server implementing the [Model Cont
 
 ## Quick Start
 
+### Using Pre-built Docker Image (Recommended)
+
+Multi-architecture support: **AMD64** and **ARM64**
+
 ```bash
-# Build
+# Pull the latest image from Docker Hub
+docker pull firstfinger/ssh-mcp:latest
+
+# Run HTTP server (production - keys in /data volume)
+docker run -v ssh-keys:/data -p 8000:8000 firstfinger/ssh-mcp:latest
+
+# Run with custom port
+docker run -v ssh-keys:/data -p 9090:8000 -e PORT=8000 firstfinger/ssh-mcp:latest
+
+# Run in stdio mode (for local MCP hosts)
+docker run -v ssh-keys:/data firstfinger/ssh-mcp:latest -mode stdio
+```
+
+### Local Development
+
+```bash
+# Build from source
 go build -o ssh-mcp ./cmd/server
 
 # Run HTTP server (development - keys in ./data/)
 ./ssh-mcp                    # Default: :8000
 PORT=9090 ./ssh-mcp          # Custom port
 
-# Run stdio mode (local MCP hosts)
+# Run stdio mode
 ./ssh-mcp -mode stdio
 
-# Docker (production - keys in /data volume)
+# Build your own Docker image
 docker build -t ssh-mcp .
 docker run -v ssh-keys:/data -p 8000:8000 ssh-mcp
 ```
@@ -241,14 +261,17 @@ Each session maintains isolated SSH connections with independent lifecycle manag
 ## Development
 
 ```bash
-# Build
+# Build from source
 go build -o ssh-mcp ./cmd/server
 
 # Test with race detection
 go test ./... -v -race
 
-# Docker build
+# Build Docker image locally
 docker build --build-arg COMMIT_SHA=$(git rev-parse --short HEAD) -t ssh-mcp .
+
+# Or use the official multi-arch image (AMD64/ARM64)
+docker pull firstfinger/ssh-mcp:latest
 ```
 
 **Requirements**: Go 1.25+, libpcap-dev (VoIP tools)
