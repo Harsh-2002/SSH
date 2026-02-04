@@ -39,25 +39,25 @@ const Hero: React.FC = () => {
           </div>
           <div className="font-mono text-xs md:text-sm space-y-2 md:space-y-3 overflow-x-auto no-scrollbar">
             <div className="flex gap-2 text-gray-400 whitespace-nowrap">
-              <span># Initialize connection to infrastructure</span>
+              <span># Manage infrastructure securely</span>
             </div>
             <div className="flex gap-2 whitespace-nowrap">
               <span className="text-green-600 font-bold">➜</span>
               <span className="text-blue-600 font-bold">~</span>
-              <span>connect --host=production</span>
+              <span>connect --host=backend-01</span>
             </div>
-            <div className="text-gray-500">Connected to production environment.</div>
+            <div className="text-gray-500">Authenticated. Session established.</div>
 
             <div className="flex gap-2 pt-2 whitespace-nowrap">
               <span className="text-green-600 font-bold">➜</span>
               <span className="text-blue-600 font-bold">~</span>
-              <span>mcp run "deploy.sh"</span>
+              <span>mcp run "docker stats --no-stream"</span>
             </div>
             <div className="text-gray-500">
-              {'>'} Checking dependencies... OK<br />
-              {'>'} Syncing files... OK<br />
-              {'>'} Restarting services... OK<br />
-              <span className="text-green-600 font-bold">Success.</span>
+              {'>'} CONTAINER ID   NAME        CPU %     MEM USAGE<br />
+              {'>'} a1b2c3d4e5     api-svc     0.05%     45MiB / 1GiB<br />
+              {'>'} f9e8d7c6b5     db-pg       1.20%     150MiB / 2GiB<br />
+              <span className="text-green-600 font-bold">Command completed.</span>
             </div>
           </div>
         </div>

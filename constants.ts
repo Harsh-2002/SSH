@@ -12,22 +12,34 @@ export const INSTALL_METHODS: InstallMethod[] = [
   {
     id: 'docker',
     label: 'Docker CLI',
-    commands: `docker run -d \\
+    commands: `# Run with default settings (HTTP port 8000)
+docker run -d \\
   --name ssh-mcp \\
   -p 8000:8000 \\
+  -v ssh-mcp-data:/data \\
+  firstfinger/ssh-mcp:latest
+
+# Custom Port & Debug Mode
+docker run -d \\
+  --name ssh-mcp \\
+  -e PORT=9090 \\
+  -e SSH_MCP_DEBUG=true \\
+  -p 9090:9090 \\
   -v ssh-mcp-data:/data \\
   firstfinger/ssh-mcp:latest`,
     note: 'Distroless production image (11MB)'
   },
   {
     id: 'compose',
-    label: 'docker-compose.yml',
+    label: 'Docker Compose',
     commands: `services:
   ssh-mcp:
     image: firstfinger/ssh-mcp:latest
     container_name: ssh-mcp
     ports:
       - "8000:8000"
+    environment:
+      - PORT=8000
     volumes:
       - ssh-data:/data
     restart: unless-stopped
@@ -44,8 +56,11 @@ git clone https://github.com/Harsh-2002/SSH-MCP.git
 cd SSH-MCP
 go build -o ssh-mcp ./cmd/server
 
-# Run
-./ssh-mcp`,
+# Run (Defaults using HTTP :8000)
+./ssh-mcp
+
+# Run with custom configuration
+PORT=9090 SSH_MCP_DEBUG=true ./ssh-mcp`,
     note: 'Zero dependencies. Single binary.'
   }
 ];
@@ -93,10 +108,8 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
 ];
 
 export const CONFIG_ITEMS: ConfigItem[] = [
-  { variable: 'PORT', type: 'Integer', default: '8000', description: 'The port the HTTP server listens on.' },
-  { variable: 'SSH_MCP_SESSION_HEADER', type: 'String', default: 'X-Session-Key', description: 'Header used for smart session caching.' },
-  { variable: 'SSH_MCP_SESSION_TIMEOUT', type: 'Integer', default: '300', description: 'Idle timeout for cached sessions in seconds.' },
-  { variable: 'SSH_MCP_GLOBAL_STATE', type: 'Boolean', default: 'false', description: 'If true, a single SSH manager is shared by all clients.' },
-  { variable: 'SSH_MCP_COMMAND_TIMEOUT', type: 'Float', default: '120.0', description: 'Maximum time (seconds) allowed for an SSH command.' },
-  { variable: 'SSH_MCP_MAX_OUTPUT', type: 'Integer', default: '51200', description: 'Maximum byte size of command output returned.' },
+  { variable: 'Transport Mode', type: 'String', default: 'http', description: 'Env: SSH_MCP_MODE | Flag: --mode. Set to "stdio" or "http".' },
+  { variable: 'Port', type: 'Integer', default: '8000', description: 'Env: PORT | Flag: --port. HTTP server listening port.' },
+  { variable: 'Debug', type: 'Boolean', default: 'false', description: 'Env: SSH_MCP_DEBUG | Flag: --debug. Enable verbose logging.' },
+  { variable: 'Global State', type: 'Boolean', default: 'false', description: 'Env: SSH_MCP_GLOBAL | Flag: --global. Share connection pool.' },
 ];

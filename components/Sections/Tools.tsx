@@ -9,7 +9,7 @@ const Tools: React.FC = () => {
         <p className="mt-4 text-gray-600 text-sm md:text-base">All tools accept a <code>target</code> parameter (default: "primary").</p>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6 md:gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
         {TOOL_CATEGORIES.map((category) => (
           <div key={category.title} className="bg-white border-2 border-brand-black shadow-brutal rounded-xl overflow-hidden hover:shadow-brutal-lg transition-shadow duration-300">
             <div className="bg-brand-black text-white px-4 py-3 md:px-6 md:py-4 font-mono font-bold border-b-2 border-brand-black flex justify-between items-center text-sm md:text-base">

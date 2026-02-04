@@ -1,6 +1,6 @@
 import React from 'react';
 import BrutalCard from '../ui/BrutalCard';
-import { Network, Key, Layers, FileCode, Terminal, Database } from 'lucide-react';
+import { Network, Key, Layers, FileCode, Terminal, Database, Box, Phone, ShieldCheck } from 'lucide-react';
 
 const Features: React.FC = () => {
   return (
@@ -12,7 +12,7 @@ const Features: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-          <BrutalCard className="hover:translate-y-[-4px] transition-transform duration-300">
+          <BrutalCard className="hover:shadow-brutal-lg transition-shadow duration-300">
             <div className="w-12 h-12 bg-brand-yellow border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
               <Network size={24} />
             </div>
@@ -22,7 +22,7 @@ const Features: React.FC = () => {
             </p>
           </BrutalCard>
 
-          <BrutalCard className="hover:translate-y-[-4px] transition-transform duration-300">
+          <BrutalCard className="hover:shadow-brutal-lg transition-shadow duration-300">
             <div className="w-12 h-12 bg-blue-300 border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
               <Key size={24} />
             </div>
@@ -32,7 +32,7 @@ const Features: React.FC = () => {
             </p>
           </BrutalCard>
 
-          <BrutalCard className="hover:translate-y-[-4px] transition-transform duration-300">
+          <BrutalCard className="hover:shadow-brutal-lg transition-shadow duration-300">
             <div className="w-12 h-12 bg-red-300 border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
               <Layers size={24} />
             </div>
@@ -42,7 +42,7 @@ const Features: React.FC = () => {
             </p>
           </BrutalCard>
 
-          <BrutalCard className="hover:translate-y-[-4px] transition-transform duration-300">
+          <BrutalCard className="hover:shadow-brutal-lg transition-shadow duration-300">
             <div className="w-12 h-12 bg-purple-300 border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
               <FileCode size={24} />
             </div>
@@ -52,7 +52,7 @@ const Features: React.FC = () => {
             </p>
           </BrutalCard>
 
-          <BrutalCard className="hover:translate-y-[-4px] transition-transform duration-300">
+          <BrutalCard className="hover:shadow-brutal-lg transition-shadow duration-300">
             <div className="w-12 h-12 bg-green-300 border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
               <Database size={24} />
             </div>
@@ -62,13 +62,43 @@ const Features: React.FC = () => {
             </p>
           </BrutalCard>
 
-          <BrutalCard className="hover:translate-y-[-4px] transition-transform duration-300">
+          <BrutalCard className="hover:shadow-brutal-lg transition-shadow duration-300">
             <div className="w-12 h-12 bg-gray-300 border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
               <Terminal size={24} />
             </div>
             <h3 className="text-xl font-bold mb-3">Log Analysis</h3>
             <p className="text-gray-600 leading-relaxed text-sm md:text-base">
               Dedicated tools for searching logs (grep/journalctl) and parsing SIP/VoIP traffic (PCAP analysis).
+            </p>
+          </BrutalCard>
+
+          <BrutalCard className="hover:shadow-brutal-lg transition-shadow duration-300">
+            <div className="w-12 h-12 bg-cyan-300 border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
+              <Box size={24} />
+            </div>
+            <h3 className="text-xl font-bold mb-3">Docker Native</h3>
+            <p className="text-gray-600 leading-relaxed text-sm md:text-base">
+              Directly manage containers, inspect logs, and execute commands inside Docker environments without external agents.
+            </p>
+          </BrutalCard>
+
+          <BrutalCard className="hover:shadow-brutal-lg transition-shadow duration-300">
+            <div className="w-12 h-12 bg-pink-300 border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
+              <Phone size={24} />
+            </div>
+            <h3 className="text-xl font-bold mb-3">VoIP Diagnostics</h3>
+            <p className="text-gray-600 leading-relaxed text-sm md:text-base">
+              Built-in PCAP analysis for SIP call flows and RTP quality checks. Debug VoIP infrastructure natively.
+            </p>
+          </BrutalCard>
+
+          <BrutalCard className="hover:shadow-brutal-lg transition-shadow duration-300">
+            <div className="w-12 h-12 bg-orange-300 border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
+              <ShieldCheck size={24} />
+            </div>
+            <h3 className="text-xl font-bold mb-3">Bastion Access</h3>
+            <p className="text-gray-600 leading-relaxed text-sm md:text-base">
+              Seamlessly connect to private networks via bastion hosts using the <code>via</code> parameter. No manual tunnels.
             </p>
           </BrutalCard>
         </div>
