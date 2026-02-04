@@ -19,13 +19,16 @@ import (
 
 const (
 	serverName    = "ssh-mcp"
-	serverVersion = "2.0.0"
 	
 	// Defaults
 	defaultMode  = "http"
 	defaultPort  = "8000"
 	defaultDebug = "false"
+	defaultGlobal = "false"
 )
+
+// Injected at build time
+var commitSHA = "dev"
 
 func main() {
 	// Configuration Precedence: Flag > Env > Default
@@ -58,7 +61,10 @@ func main() {
 		log.SetFlags(log.LstdFlags)
 	}
 
-	log.Printf("Starting %s v%s (mode=%s, port=%s, global=%v)", serverName, serverVersion, *mode, *port, *globalState)
+	// Injected at build time
+	var commitSHA = "dev"
+	
+	log.Printf("Starting %s (commit=%s, mode=%s, port=%s, global=%v)", serverName, commitSHA, *mode, *port, *globalState)
 
 	// Initialize SSH Pool
 	pool := ssh.NewPool(*globalState)
@@ -66,7 +72,7 @@ func main() {
 	// Create MCP Server
 	mcpServer := server.NewMCPServer(
 		serverName,
-		serverVersion,
+		commitSHA,
 		server.WithToolCapabilities(true),
 		server.WithRecovery(),
 		server.WithHooks(createSessionHooks(pool)),

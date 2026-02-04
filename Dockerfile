@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /build
 
@@ -14,8 +14,9 @@ RUN go mod download
 COPY . .
 
 # Build static binary
+ARG COMMIT_SHA=dev
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-w -s" \
+    -ldflags="-w -s -X main.commitSHA=${COMMIT_SHA}" \
     -o ssh-mcp \
     ./cmd/server
 
@@ -33,4 +34,4 @@ ENV SSH_MCP_MODE=http
 EXPOSE 8000
 
 ENTRYPOINT ["/ssh-mcp"]
-CMD ["-mode", "http", "-port", "8000"]
+CMD []

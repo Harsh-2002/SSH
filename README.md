@@ -296,7 +296,7 @@ go test ./... -v -race
 ### Docker Build
 
 ```bash
-docker build -t ssh-mcp .
+docker build --build-arg COMMIT_SHA=$(git rev-parse --short HEAD) -t ssh-mcp .
 ```
 
 ## Deployment Guide
