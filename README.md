@@ -28,11 +28,14 @@ go build -o ssh-mcp ./cmd/server
 ### Run
 
 ```bash
-# Stdio mode (for local MCP hosts like Claude Desktop)
+# Run (Defaults to HTTP on port 8000)
 ./ssh-mcp
 
-# HTTP mode (for remote access)
-./ssh-mcp -mode http -port 8000
+# Run on custom port via Env Var
+PORT=9090 ./ssh-mcp
+
+# Stdio mode (for local MCP hosts like Claude Desktop)
+./ssh-mcp -mode stdio
 ```
 
 ### Docker
@@ -46,10 +49,12 @@ docker run -v /path/to/keys:/data ssh-mcp
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-mode` | `stdio` | Transport mode: `stdio` or `http` |
-| `-port` | `8000` | HTTP server port (http mode only) |
-| `-debug` | `false` | Enable debug logging |
-| `-global` | `false` | Use single shared SSH manager for all sessions |
+| Flag | Env Var | Default | Description |
+|------|---------|---------|-------------|
+| `-mode` | `SSH_MCP_MODE` | `http` | Transport mode: `stdio` or `http` |
+| `-port` | `PORT` | `8000` | HTTP server port (http mode only) |
+| `-debug` | `SSH_MCP_DEBUG` | `false` | Enable debug logging |
+| `-global` | `SSH_MCP_GLOBAL` | `false` | Use single shared SSH manager for all sessions |
 
 ## Tools Reference
 

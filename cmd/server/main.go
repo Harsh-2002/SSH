@@ -20,14 +20,35 @@ import (
 const (
 	serverName    = "ssh-mcp"
 	serverVersion = "2.0.0"
+	
+	// Defaults
+	defaultMode  = "http"
+	defaultPort  = "8000"
+	defaultDebug = "false"
 )
 
 func main() {
-	// CLI flags
-	mode := flag.String("mode", "stdio", "Transport mode: stdio or http")
-	port := flag.String("port", "8000", "HTTP server port (http mode only)")
-	debug := flag.Bool("debug", false, "Enable debug logging")
-	globalState := flag.Bool("global", false, "Use single shared SSH manager for all sessions")
+	// Configuration Precedence: Flag > Env > Default
+	
+	// Helper to get env with fallback
+	getEnv := func(key, fallback string) string {
+		if value, exists := os.LookupEnv(key); exists {
+			return value
+		}
+		return fallback
+	}
+
+	// Initialize flags with Env/Default values
+	modeEnv := getEnv("SSH_MCP_MODE", defaultMode)
+	portEnv := getEnv("PORT", defaultPort)
+	debugEnv := getEnv("SSH_MCP_DEBUG", defaultDebug) == "true"
+	globalEnv := getEnv("SSH_MCP_GLOBAL", "false") == "true"
+
+	// Define flags (overrides envs)
+	mode := flag.String("mode", modeEnv, "Transport mode: stdio or http")
+	port := flag.String("port", portEnv, "HTTP server port (http mode only)")
+	debug := flag.Bool("debug", debugEnv, "Enable debug logging")
+	globalState := flag.Bool("global", globalEnv, "Use single shared SSH manager for all sessions")
 	flag.Parse()
 
 	// Configure logging
@@ -37,7 +58,7 @@ func main() {
 		log.SetFlags(log.LstdFlags)
 	}
 
-	log.Printf("Starting %s v%s (mode=%s)", serverName, serverVersion, *mode)
+	log.Printf("Starting %s v%s (mode=%s, port=%s, global=%v)", serverName, serverVersion, *mode, *port, *globalState)
 
 	// Initialize SSH Pool
 	pool := ssh.NewPool(*globalState)
