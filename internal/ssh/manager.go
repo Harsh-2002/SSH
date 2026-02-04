@@ -58,29 +58,30 @@ func (m *Manager) getAliasLock(alias string) *sync.Mutex {
 	return lock
 }
 
-// generateAlias creates a unique alias.
+// generateAlias creates a unique alias and reserves it.
 func (m *Manager) generateAlias(username, host string) string {
 	base := fmt.Sprintf("%s@%s", username, host)
 
-	m.mu.RLock()
-	_, exists := m.connections[base]
-	m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	if !exists {
+	if _, exists := m.connections[base]; !exists {
+		m.connections[base] = nil // Reserve
 		return base
 	}
 
 	for i := 2; i < 100; i++ {
 		candidate := fmt.Sprintf("%s-%d", base, i)
-		m.mu.RLock()
-		_, exists := m.connections[candidate]
-		m.mu.RUnlock()
-		if !exists {
+		if _, exists := m.connections[candidate]; !exists {
+			m.connections[candidate] = nil // Reserve
 			return candidate
 		}
 	}
 
-	return fmt.Sprintf("%s-%d", base, 100)
+	// Fallback (might collide but highly unlikely to fill 100 slots)
+	final := fmt.Sprintf("%s-%d", base, 100)
+	m.connections[final] = nil
+	return final
 }
 
 // ConnectOptions contains options for SSH connection.
@@ -95,13 +96,15 @@ type ConnectOptions struct {
 }
 
 // Connect establishes an SSH connection and returns the alias.
-func (m *Manager) Connect(ctx context.Context, opts ConnectOptions) (string, error) {
+func (m *Manager) Connect(ctx context.Context, opts ConnectOptions) (alias string, err error) {
 	if opts.Port == 0 {
 		opts.Port = 22
 	}
 
+	var reserved bool
 	if opts.Alias == "" {
 		opts.Alias = m.generateAlias(opts.Username, opts.Host)
+		reserved = true
 	}
 
 	if opts.Via == opts.Alias {
@@ -109,16 +112,38 @@ func (m *Manager) Connect(ctx context.Context, opts ConnectOptions) (string, err
 	}
 
 	m.mu.Lock()
-
-	if existing, ok := m.connections[opts.Alias]; ok {
-		m.mu.Unlock()
-		if existing.creds.Host == opts.Host && existing.creds.Username == opts.Username {
-			return opts.Alias, nil
+	existing, exists := m.connections[opts.Alias]
+	if exists {
+		if existing != nil {
+			m.mu.Unlock()
+			if existing.creds.Host == opts.Host && existing.creds.Username == opts.Username {
+				return opts.Alias, nil
+			}
+			return "", fmt.Errorf("alias '%s' already exists for %s@%s", opts.Alias, existing.creds.Username, existing.creds.Host)
 		}
-		return "", fmt.Errorf("alias '%s' already exists for %s@%s", opts.Alias, existing.creds.Username, existing.creds.Host)
+		// Existing is nil (reserved)
+		if !reserved {
+			m.mu.Unlock()
+			return "", fmt.Errorf("alias '%s' is currently connecting/reserved", opts.Alias)
+		}
+		// It's our reservation, proceed
+	} else {
+		// New explicit alias
+		m.connections[opts.Alias] = nil // Reserve
 	}
-
 	m.mu.Unlock()
+
+	// Defer cleanup of reservation on error
+	defer func() {
+		if err != nil {
+			m.mu.Lock()
+			// Only remove if it's still nil (failed to connect)
+			if c, ok := m.connections[opts.Alias]; ok && c == nil {
+				delete(m.connections, opts.Alias)
+			}
+			m.mu.Unlock()
+		}
+	}()
 
 	creds := Credentials{
 		Host:     opts.Host,
@@ -178,9 +203,12 @@ func (m *Manager) Disconnect(alias string) (string, error) {
 	defer m.mu.Unlock()
 
 	if alias == "" {
-		count := len(m.connections)
+		count := 0
 		for a, client := range m.connections {
-			client.Close()
+			if client != nil {
+				client.Close()
+				count++
+			}
 			delete(m.connections, a)
 		}
 		m.primary = ""
@@ -192,14 +220,18 @@ func (m *Manager) Disconnect(alias string) (string, error) {
 		return "", fmt.Errorf("no connection with alias '%s'", alias)
 	}
 
-	client.Close()
+	if client != nil {
+		client.Close()
+	}
 	delete(m.connections, alias)
 
 	if m.primary == alias {
 		m.primary = ""
-		for a := range m.connections {
-			m.primary = a
-			break
+		for a, c := range m.connections {
+			if c != nil {
+				m.primary = a
+				break
+			}
 		}
 	}
 
@@ -337,7 +369,13 @@ func (m *Manager) validatePath(path, alias string) (string, error) {
 
 	absPath := filepath.Clean(path)
 
-	if !strings.HasPrefix(absPath, m.allowedRoot) {
+	// Security Check: Ensure path is within allowed root
+	// We must ensure the clean path starts with allowed_root AND
+	// that it's either exactly the root or followed by a separator.
+	// This prevents /safe_root being matched by /safe_root_sibling
+	cleanRoot := filepath.Clean(m.allowedRoot)
+	
+	if absPath != cleanRoot && !strings.HasPrefix(absPath, cleanRoot+string(os.PathSeparator)) {
 		return "", fmt.Errorf("access denied: path '%s' is outside allowed root '%s'", absPath, m.allowedRoot)
 	}
 
@@ -500,7 +538,9 @@ func (m *Manager) Close() {
 	defer m.mu.Unlock()
 
 	for _, client := range m.connections {
-		client.Close()
+		if client != nil {
+			client.Close()
+		}
 	}
 	m.connections = make(map[string]*Client)
 	m.primary = ""

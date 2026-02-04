@@ -1,42 +1,24 @@
-# Binaries
+# Binary
 ssh-mcp
-*.exe
-*.dll
-*.so
-*.dylib
 
-# Build artifacts
-/bin/
-/dist/
+# Data & Keys (Persistent storage for local runs)
+data/
+*.pem
+*.key
+id_ed25519
+id_ed25519.pub
+known_hosts
 
-# Test
+# Test Artifacts
 *.test
-*.out
 coverage.txt
 coverage.html
 
-# Go workspace
-go.work
-go.work.sum
-
-# IDE
+# OS & Editor
+.DS_Store
 .vscode/
 .idea/
 *.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
 
 # Logs
 *.log
-logs/
-
-# Local config
-.env
-.env.local
-
-# Data directory (SSH keys)
-/data/
