@@ -1,6 +1,6 @@
 import React from 'react';
-import screenshot1 from '/public/SCR-20260116-nfoe.avif';
-import screenshot2 from '/public/SCR-20260116-nhbs.avif';
+import screenshot1 from '../../assets/SCR-20260116-nfoe.avif';
+import screenshot2 from '../../assets/SCR-20260116-nhbs.avif';
 
 const Screenshots: React.FC = () => {
   const screenshots = [
@@ -23,7 +23,7 @@ const Screenshots: React.FC = () => {
             <div key={index} className="w-full relative">
               <div className="absolute inset-0 bg-brand-yellow rounded-lg translate-x-2 translate-y-2 sm:translate-x-4 sm:translate-y-4"></div>
               <div className="relative bg-white border-2 border-brand-black rounded-lg shadow-brutal">
-                <img 
+                <img
                   src={screenshot.src}
                   alt={screenshot.alt}
                   className="w-full h-auto rounded-lg"

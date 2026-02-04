@@ -16,9 +16,9 @@ const Features: React.FC = () => {
             <div className="w-12 h-12 bg-brand-yellow border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
               <Network size={24} />
             </div>
-            <h3 className="text-xl font-bold mb-3">Direct SSH Bridge</h3>
+            <h3 className="text-xl font-bold mb-3">Native Go Core</h3>
             <p className="text-gray-600 leading-relaxed text-sm md:text-base">
-              The agent doesn't need SSH libraries. It calls simple tools, and the server handles connections and relaying.
+              Rewritten in 100% Go for high performance and zero runtime dependencies. Single static binary deployment.
             </p>
           </BrutalCard>
 
@@ -46,9 +46,9 @@ const Features: React.FC = () => {
             <div className="w-12 h-12 bg-purple-300 border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
               <FileCode size={24} />
             </div>
-            <h3 className="text-xl font-bold mb-3">Structured Output</h3>
+            <h3 className="text-xl font-bold mb-3">Strict Validation</h3>
             <p className="text-gray-600 leading-relaxed text-sm md:text-base">
-              Tools return clean JSON structures where possible, making it easy for LLMs to parse and reason about system state.
+              Race-condition protection and strict path validation ensure thread safety and security under high concurrency.
             </p>
           </BrutalCard>
 
@@ -56,9 +56,9 @@ const Features: React.FC = () => {
             <div className="w-12 h-12 bg-green-300 border-2 border-brand-black rounded-lg flex items-center justify-center mb-6 shadow-brutal-sm">
               <Database size={24} />
             </div>
-            <h3 className="text-xl font-bold mb-3">File Operations</h3>
+            <h3 className="text-xl font-bold mb-3">Native SFTP</h3>
             <p className="text-gray-600 leading-relaxed text-sm md:text-base">
-              Read, write, edit, and sync files safely with atomic operations and built-in diff support for safe patching.
+              Read, write, edit, and sync files using the native SFTP protocol. No external binaries (scp/rsync) required.
             </p>
           </BrutalCard>
 
@@ -68,7 +68,7 @@ const Features: React.FC = () => {
             </div>
             <h3 className="text-xl font-bold mb-3">Log Analysis</h3>
             <p className="text-gray-600 leading-relaxed text-sm md:text-base">
-              Dedicated tools for searching logs (grep/journalctl) and finding files without overwhelming the context window.
+              Dedicated tools for searching logs (grep/journalctl) and parsing SIP/VoIP traffic (PCAP analysis).
             </p>
           </BrutalCard>
         </div>

@@ -22,23 +22,21 @@ const Quickstart: React.FC = () => {
               <button
                 key={method.id}
                 onClick={() => setActiveTab(method.id)}
-                className={`px-4 py-3 md:px-6 md:py-4 font-mono font-bold text-xs sm:text-sm md:text-base border-r-0 sm:border-r-2 border-brand-black last:border-r-0 transition-all duration-200 flex-grow sm:flex-grow-0 ${
-                  activeTab === method.id 
-                    ? 'bg-brand-black text-brand-yellow' 
+                className={`px-4 py-3 md:px-6 md:py-4 font-mono font-bold text-xs sm:text-sm md:text-base border-r-0 sm:border-r-2 border-brand-black last:border-r-0 transition-all duration-200 flex-grow sm:flex-grow-0 ${activeTab === method.id
+                    ? 'bg-brand-black text-brand-yellow'
                     : 'bg-transparent text-gray-500 hover:bg-brand-yellow/20 hover:text-brand-black'
-                }`}
+                  }`}
               >
                 {method.label}
               </button>
             ))}
           </div>
-          
+
           <div className="p-4 sm:p-6 md:p-8 bg-white flex flex-col gap-6">
             <CodeBlock code={activeMethod.commands} />
-            
+
             {activeMethod.note && (
               <div className="bg-yellow-50 border-2 border-brand-black p-4 rounded-lg flex gap-3 items-start transition-transform hover:scale-[1.01] duration-300">
-                <span className="text-xl md:text-2xl">💡</span>
                 <p className="text-xs md:text-sm font-medium pt-1">{activeMethod.note}</p>
               </div>
             )}
