@@ -163,7 +163,9 @@ func createIdentityHandler(pool *ssh.Pool) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
-		return mcp.NewToolResultText(pubKey), nil
+		// Format as markdown code block for easy copy/paste
+		formatted := fmt.Sprintf("SSH Public Key:\n\n```\n%s```\n\nAdd this to ~/.ssh/authorized_keys on remote servers.", pubKey)
+		return mcp.NewToolResultText(formatted), nil
 	}
 }
 
@@ -186,19 +188,19 @@ func createInfoHandler(pool *ssh.Pool) server.ToolHandlerFunc {
 	}
 }
 
-// contextKey is used to retrieve X-Session-Key from context
-type contextKey string
-
-const sessionKeyContextKey contextKey = "session-key"
-
 // getManager retrieves the SSH manager for the current session.
 // Strategy:
 // 1. Global mode: Single shared manager (-global flag)
 // 2. Header-based: Pool by X-Session-Key header (if present)
 // 3. Session-based: Pool by MCP session ID (fallback)
+//
+// Note: For header-based sessions, the manager tracks active requests
+// to prevent cleanup during use. The request count is automatically
+// managed by GetByHeader (acquire) and will be released when the
+// HTTP request context completes.
 func getManager(ctx context.Context, pool *ssh.Pool) *ssh.Manager {
 	// Check for X-Session-Key header first (for sticky sessions)
-	if sessionKey, ok := ctx.Value(sessionKeyContextKey).(string); ok && sessionKey != "" {
+	if sessionKey, ok := ctx.Value(ssh.SessionKeyContextKey).(string); ok && sessionKey != "" {
 		return pool.GetByHeader(sessionKey)
 	}
 

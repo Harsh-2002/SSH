@@ -4,6 +4,7 @@ package ssh
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"log"
@@ -106,7 +107,11 @@ func (km *KeyManager) generateKey() error {
 		return fmt.Errorf("failed to create SSH public key: %w", err)
 	}
 
-	pubKeyBytes := ssh.MarshalAuthorizedKey(sshPubKey)
+	// Add "SSH-MCP" comment to public key for identification
+	pubKeyBytes := []byte(fmt.Sprintf("%s %s SSH-MCP\n", 
+		sshPubKey.Type(), 
+		base64.StdEncoding.EncodeToString(sshPubKey.Marshal())))
+	
 	if err := os.WriteFile(km.keyPath+".pub", pubKeyBytes, 0644); err != nil {
 		return fmt.Errorf("failed to write public key: %w", err)
 	}

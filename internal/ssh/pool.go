@@ -7,9 +7,17 @@ import (
 	"time"
 )
 
+// ContextKey is used for storing values in context.
+// Exported so main.go and tools can use the same type.
+type ContextKey string
+
 const (
-	sessionHeader = "X-Session-Key"
-	defaultTimeout = 5 * time.Minute
+	// SessionKeyContextKey is the context key for X-Session-Key header value.
+	// Used for sticky session routing in HTTP mode.
+	SessionKeyContextKey ContextKey = "session-key"
+
+	sessionHeader      = "X-Session-Key"
+	defaultTimeout     = 5 * time.Minute
 	minCleanupInterval = 5 * time.Second
 	maxCleanupInterval = 60 * time.Second
 )
@@ -18,6 +26,7 @@ const (
 type sessionEntry struct {
 	manager      *Manager
 	lastAccessed atomic.Int64
+	activeReqs   atomic.Int32 // Number of in-flight requests
 }
 
 func (e *sessionEntry) touch() {
@@ -26,6 +35,19 @@ func (e *sessionEntry) touch() {
 
 func (e *sessionEntry) age() time.Duration {
 	return time.Since(time.Unix(e.lastAccessed.Load(), 0))
+}
+
+func (e *sessionEntry) acquire() {
+	e.activeReqs.Add(1)
+	e.touch()
+}
+
+func (e *sessionEntry) release() {
+	e.activeReqs.Add(-1)
+}
+
+func (e *sessionEntry) inUse() bool {
+	return e.activeReqs.Load() > 0
 }
 
 // Pool manages SSH Managers for multiple MCP sessions.
@@ -91,6 +113,9 @@ func (p *Pool) Get(sessionID string) *Manager {
 // Uses double-checked locking for optimal concurrency:
 // - Fast path: Existing sessions without lock
 // - Slow path: New sessions with lock
+//
+// Note: Does NOT acquire active count - that's done by TouchHeader in session hooks.
+// This prevents count imbalance from multiple tool calls per session.
 func (p *Pool) GetByHeader(headerKey string) *Manager {
 	if p.globalMode {
 		return p.global
@@ -107,7 +132,7 @@ func (p *Pool) GetByHeader(headerKey string) *Manager {
 
 	if entry != nil {
 		entry.touch()
-		log.Printf("[Pool] Reusing header session: %s (fast path)", headerKey)
+		log.Printf("[Pool] Reusing manager for header: %s (active=%d)", headerKey, entry.activeReqs.Load())
 		return entry.manager
 	}
 
@@ -118,17 +143,73 @@ func (p *Pool) GetByHeader(headerKey string) *Manager {
 	// Double-check after acquiring lock
 	if entry = p.headerCache[headerKey]; entry != nil {
 		entry.touch()
-		log.Printf("[Pool] Reusing header session: %s (slow path)", headerKey)
+		log.Printf("[Pool] Reusing manager for header: %s (after lock, active=%d)", headerKey, entry.activeReqs.Load())
 		return entry.manager
 	}
 
-	// Create new
-	log.Printf("[Pool] Creating new header session: %s", headerKey)
+	// Create new (shouldn't happen if TouchHeader was called first in session hook)
+	log.Printf("[Pool] WARNING: Created manager via GetByHeader for header: %s (TouchHeader should create first)", headerKey)
 	mgr := NewManager("", "/")
 	entry = &sessionEntry{manager: mgr}
 	entry.touch()
 	p.headerCache[headerKey] = entry
 	return mgr
+}
+
+// ReleaseHeader decrements the active request count for a header session.
+// Called by session hooks on session end to allow cleanup when idle.
+func (p *Pool) ReleaseHeader(headerKey string) {
+	if p.globalMode || headerKey == "" {
+		return
+	}
+
+	p.headerCacheMu.RLock()
+	entry := p.headerCache[headerKey]
+	p.headerCacheMu.RUnlock()
+
+	if entry != nil {
+		entry.release()
+		log.Printf("[Pool] Released session for header: %s (active=%d)", headerKey, entry.activeReqs.Load())
+	}
+}
+
+// TouchHeader creates or updates a header-based session.
+// If the session doesn't exist, creates it.
+// Acquires the active request count (balanced by ReleaseHeader on session end).
+// Called by session hooks on session start.
+func (p *Pool) TouchHeader(headerKey string) {
+	if p.globalMode || headerKey == "" {
+		return
+	}
+
+	// Fast path: entry exists
+	p.headerCacheMu.RLock()
+	entry := p.headerCache[headerKey]
+	p.headerCacheMu.RUnlock()
+
+	if entry != nil {
+		entry.acquire() // Acquire for this session
+		log.Printf("[Pool] Acquired session for header: %s (active=%d)", headerKey, entry.activeReqs.Load())
+		return
+	}
+
+	// Slow path: create if not exists
+	p.headerCacheMu.Lock()
+	defer p.headerCacheMu.Unlock()
+
+	// Double-check after acquiring lock
+	if entry = p.headerCache[headerKey]; entry != nil {
+		entry.acquire()
+		log.Printf("[Pool] Acquired session for header: %s (after lock, active=%d)", headerKey, entry.activeReqs.Load())
+		return
+	}
+
+	// Create new manager with active count = 1
+	log.Printf("[Pool] Created new manager for header: %s", headerKey)
+	mgr := NewManager("", "/")
+	entry = &sessionEntry{manager: mgr}
+	entry.acquire() // Start with active=1 for this session
+	p.headerCache[headerKey] = entry
 }
 
 // CreateSession creates a new Manager for the session.
@@ -188,12 +269,20 @@ func (p *Pool) reap() {
 	p.headerCacheMu.RLock()
 	for key, entry := range p.headerCache {
 		age := entry.age()
-		if age > p.timeout {
+		// Only consider for removal if expired AND not in use
+		if age > p.timeout && !entry.inUse() {
 			toRemove = append(toRemove, key)
-		} else {
+		} else if age <= p.timeout {
 			timeUntilExpiry := p.timeout - age
 			if timeUntilExpiry < nextExpiry {
 				nextExpiry = timeUntilExpiry
+			}
+		}
+		// If expired but in use, check again soon
+		if age > p.timeout && entry.inUse() {
+			log.Printf("[Pool] Skipping cleanup for %s: still in use (active=%d)", key, entry.activeReqs.Load())
+			if minCleanupInterval < nextExpiry {
+				nextExpiry = minCleanupInterval
 			}
 		}
 	}
@@ -206,8 +295,8 @@ func (p *Pool) reap() {
 
 		p.headerCacheMu.Lock()
 		if entry, ok := p.headerCache[key]; ok {
-			// Double-check inside lock
-			if entry.age() > p.timeout {
+			// Triple-check: expired AND not in use
+			if entry.age() > p.timeout && !entry.inUse() {
 				delete(p.headerCache, key)
 				mgr = entry.manager
 				log.Printf("[Pool] Cleaning up idle header session: %s", key)
@@ -240,6 +329,7 @@ func (p *Pool) reap() {
 }
 
 // Close closes all managers.
+// Waits briefly for active requests to complete before force-closing.
 func (p *Pool) Close() {
 	// Stop cleanup loop
 	close(p.stopCleanup)
@@ -251,15 +341,19 @@ func (p *Pool) Close() {
 
 	// Close session managers
 	p.managersMu.Lock()
-	for _, mgr := range p.managers {
+	for id, mgr := range p.managers {
+		log.Printf("[Pool] Closing session manager: %s", id)
 		mgr.Close()
 	}
 	p.managers = make(map[string]*Manager)
 	p.managersMu.Unlock()
 
-	// Close header cache
+	// Close header cache - wait briefly for active requests
 	p.headerCacheMu.Lock()
-	for _, entry := range p.headerCache {
+	for key, entry := range p.headerCache {
+		if entry.inUse() {
+			log.Printf("[Pool] Warning: Closing header session %s with %d active requests", key, entry.activeReqs.Load())
+		}
 		entry.manager.Close()
 	}
 	p.headerCache = make(map[string]*sessionEntry)

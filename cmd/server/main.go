@@ -142,18 +142,38 @@ func main() {
 }
 
 // createSessionHooks sets up session lifecycle hooks.
+// IMPORTANT: When X-Session-Key is present, we use header-based pooling instead of session-based.
+// This prevents duplicate managers and ensures connection reuse across MCP session restarts.
 func createSessionHooks(pool *ssh.Pool) *server.Hooks {
 	hooks := &server.Hooks{}
 
 	hooks.AddOnRegisterSession(func(ctx context.Context, session server.ClientSession) {
 		sessionID := session.SessionID()
-		log.Printf("[Session] Started: %s", sessionID)
+		
+		// Check if this request has X-Session-Key - if so, use header-based pooling
+		if sessionKey, ok := ctx.Value(ssh.SessionKeyContextKey).(string); ok && sessionKey != "" {
+			// Touch the header-based manager to keep it alive
+			pool.TouchHeader(sessionKey)
+			log.Printf("[Session] Started: %s (using header pool: %s)", sessionID, sessionKey)
+			return // Don't create session-based manager
+		}
+		
+		// No header - create session-based manager
+		log.Printf("[Session] Started: %s (session pool)", sessionID)
 		pool.CreateSession(sessionID)
 	})
 
 	hooks.AddOnUnregisterSession(func(ctx context.Context, session server.ClientSession) {
 		sessionID := session.SessionID()
-		log.Printf("[Session] Ended: %s", sessionID)
+		
+		// If using header-based pooling, release active count (managed by timeout)
+		if sessionKey, ok := ctx.Value(ssh.SessionKeyContextKey).(string); ok && sessionKey != "" {
+			pool.ReleaseHeader(sessionKey)
+			log.Printf("[Session] Ended: %s (header pool: %s retained)", sessionID, sessionKey)
+			return
+		}
+		
+		log.Printf("[Session] Ended: %s (session pool destroyed)", sessionID)
 		pool.DestroySession(sessionID)
 	})
 
@@ -167,11 +187,7 @@ func runStdio(s *server.MCPServer) {
 	}
 }
 
-// sessionKeyContextKey is used to store X-Session-Key in context
-type contextKey string
-
 const sessionKeyHeader = "X-Session-Key"
-const sessionKeyContextKey contextKey = "session-key"
 
 // runHTTP runs the server in Streamable HTTP mode with graceful shutdown.
 // 
@@ -194,7 +210,7 @@ func runHTTP(s *server.MCPServer, port string) {
 			if sessionKey != "" {
 				// TODO PRODUCTION: Validate sessionKey against authorized keys here
 				log.Printf("[SECURITY] Session key received: %s from %s", sessionKey, r.RemoteAddr)
-				return context.WithValue(ctx, sessionKeyContextKey, sessionKey)
+				return context.WithValue(ctx, ssh.SessionKeyContextKey, sessionKey)
 			}
 			log.Printf("[SECURITY] No session key provided from %s", r.RemoteAddr)
 			return ctx
