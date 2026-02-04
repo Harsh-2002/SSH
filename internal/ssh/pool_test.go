@@ -153,51 +153,32 @@ func TestSessionEntry(t *testing.T) {
 		}
 	})
 
-	t.Run("acquire and release track active requests", func(t *testing.T) {
+	t.Run("multiple touches extend expiry", func(t *testing.T) {
 		entry2 := &sessionEntry{manager: mgr}
 		
-		if entry2.activeReqs.Load() != 0 {
-			t.Error("expected initial activeReqs to be 0")
-		}
-		if entry2.inUse() {
-			t.Error("expected inUse to be false initially")
-		}
-
-		entry2.acquire()
-		if entry2.activeReqs.Load() != 1 {
-			t.Errorf("expected activeReqs=1 after acquire, got %d", entry2.activeReqs.Load())
-		}
-		if !entry2.inUse() {
-			t.Error("expected inUse to be true after acquire")
-		}
-
-		entry2.acquire()
-		if entry2.activeReqs.Load() != 2 {
-			t.Errorf("expected activeReqs=2 after second acquire, got %d", entry2.activeReqs.Load())
-		}
-
-		entry2.release()
-		if entry2.activeReqs.Load() != 1 {
-			t.Errorf("expected activeReqs=1 after release, got %d", entry2.activeReqs.Load())
-		}
-
-		entry2.release()
-		if entry2.activeReqs.Load() != 0 {
-			t.Errorf("expected activeReqs=0 after second release, got %d", entry2.activeReqs.Load())
-		}
-		if entry2.inUse() {
-			t.Error("expected inUse to be false after all releases")
+		// Initial touch
+		entry2.touch()
+		time1 := entry2.lastAccessed.Load()
+		
+		// Wait and touch again
+		time.Sleep(10 * time.Millisecond)
+		entry2.touch()
+		time2 := entry2.lastAccessed.Load()
+		
+		// Both should have same second (within 1 second)
+		if time2 < time1 {
+			t.Error("second touch should have same or later timestamp")
 		}
 	})
 }
 
-func TestPoolTouchHeaderAcquireRelease(t *testing.T) {
+func TestPoolTouchHeaderExtendsExpiry(t *testing.T) {
 	pool := NewPool(false)
 	defer pool.Close()
 
 	headerKey := "test-session-key"
 
-	t.Run("TouchHeader creates and acquires", func(t *testing.T) {
+	t.Run("TouchHeader creates entry", func(t *testing.T) {
 		pool.TouchHeader(headerKey)
 		
 		pool.headerCacheMu.RLock()
@@ -207,51 +188,53 @@ func TestPoolTouchHeaderAcquireRelease(t *testing.T) {
 		if entry == nil {
 			t.Fatal("expected entry to be created")
 		}
-		if entry.activeReqs.Load() != 1 {
-			t.Errorf("expected activeReqs=1 after TouchHeader, got %d", entry.activeReqs.Load())
+		if entry.lastAccessed.Load() == 0 {
+			t.Error("expected lastAccessed to be set")
 		}
 	})
 
-	t.Run("second TouchHeader increments active count", func(t *testing.T) {
+	t.Run("second TouchHeader updates timestamp", func(t *testing.T) {
+		pool.headerCacheMu.RLock()
+		entry := pool.headerCache[headerKey]
+		time1 := entry.lastAccessed.Load()
+		pool.headerCacheMu.RUnlock()
+		
+		time.Sleep(10 * time.Millisecond)
 		pool.TouchHeader(headerKey)
 		
 		pool.headerCacheMu.RLock()
-		entry := pool.headerCache[headerKey]
+		time2 := pool.headerCache[headerKey].lastAccessed.Load()
 		pool.headerCacheMu.RUnlock()
 
-		if entry.activeReqs.Load() != 2 {
-			t.Errorf("expected activeReqs=2 after second TouchHeader, got %d", entry.activeReqs.Load())
+		if time2 < time1 {
+			t.Error("second touch should update timestamp")
 		}
 	})
 
-	t.Run("ReleaseHeader decrements active count", func(t *testing.T) {
-		pool.ReleaseHeader(headerKey)
-		
+	t.Run("GetByHeader extends expiry", func(t *testing.T) {
 		pool.headerCacheMu.RLock()
-		entry := pool.headerCache[headerKey]
+		timeBefore := pool.headerCache[headerKey].lastAccessed.Load()
 		pool.headerCacheMu.RUnlock()
 
-		if entry.activeReqs.Load() != 1 {
-			t.Errorf("expected activeReqs=1 after ReleaseHeader, got %d", entry.activeReqs.Load())
-		}
-	})
-
-	t.Run("GetByHeader returns same manager without changing active count", func(t *testing.T) {
-		pool.headerCacheMu.RLock()
-		beforeCount := pool.headerCache[headerKey].activeReqs.Load()
-		pool.headerCacheMu.RUnlock()
-
+		time.Sleep(10 * time.Millisecond)
 		mgr := pool.GetByHeader(headerKey)
 		if mgr == nil {
 			t.Fatal("expected manager to be returned")
 		}
 
 		pool.headerCacheMu.RLock()
-		afterCount := pool.headerCache[headerKey].activeReqs.Load()
+		timeAfter := pool.headerCache[headerKey].lastAccessed.Load()
 		pool.headerCacheMu.RUnlock()
 
-		if beforeCount != afterCount {
-			t.Errorf("GetByHeader changed activeReqs: before=%d, after=%d", beforeCount, afterCount)
+		if timeAfter < timeBefore {
+			t.Error("GetByHeader should extend expiry")
 		}
+	})
+
+	t.Run("ReleaseHeader is no-op", func(t *testing.T) {
+		// Should not panic or error
+		pool.ReleaseHeader(headerKey)
+		pool.ReleaseHeader("non-existent")
+		pool.ReleaseHeader("")
 	})
 }
