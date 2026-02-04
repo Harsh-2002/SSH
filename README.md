@@ -1,183 +1,296 @@
 # SSH MCP Server
 
-A Model Context Protocol (MCP) server that lets an agent connect to remote machines over SSH to manage systems. It supports local execution (stdio) and remote deployment over HTTP using Streamable HTTP transport.
+A high-performance SSH connection management server implementing the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). Enables AI agents to execute commands, manage files, and perform DevOps operations across remote infrastructure via persistent SSH sessions.
 
-## Quickstart
+[![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-### Docker (CLI)
+## Features
 
-```bash
-# Pull and run (persisting SSH keys)
-docker run -d \
-  --name ssh-mcp \
-  -p 8000:8000 \
-  -v ssh-mcp-data:/data \
-  firstfinger/ssh-mcp:latest
+- **42 Production-Ready Tools** - Core SSH, file operations, Docker, database, monitoring, and VoIP
+- **Persistent Sessions** - SSH connections survive across multiple MCP requests
+- **Jump Host Support** - Connect through bastion hosts with the `via` parameter
+- **Session Isolation** - Per-client connection pools with automatic cleanup
+- **SFTP Native** - Direct file operations without external binaries
+- **Auto-Reconnect** - Transparent reconnection on connection loss
+- **Zero Dependencies** - Single static binary, no runtime requirements
 
-# Note: If using a bind mount instead of a named volume, ensure it is writable:
-# sudo chown -R 1000:1000 /path/to/your/data
-```
+## Quick Start
 
-
-### Docker Compose
+### Build from Source
 
 ```bash
-# Clone and run
-git clone https://github.com/Harsh-2002/SSH-MCP.git
+git clone https://github.com/harsh-2002/SSH-MCP.git
 cd SSH-MCP
-docker compose up -d
+go build -o ssh-mcp ./cmd/server
 ```
 
-HTTP endpoint:
-- Streamable HTTP: `http://localhost:8000/mcp`
-
-### Local
+### Run
 
 ```bash
-pip install .
+# Stdio mode (for local MCP hosts like Claude Desktop)
+./ssh-mcp
 
-# Stdio mode (for local MCP hosts)
-python -m ssh
-
-# HTTP server (Streamable HTTP transport)
-uvicorn ssh.server_all:app --host 0.0.0.0 --port 8000
+# HTTP mode (for remote access)
+./ssh-mcp -mode http -port 8000
 ```
-
-
-## How It Works
-
-This server acts as a **bridge** between an AI Agent and your remote infrastructure.
-
-### 1. Direct SSH Bridge & Multi-Node Support
-Instead of the agent needing SSH libraries, it calls simple MCP tools. The server handles all connections, authentication, and even allows you to `sync` files between multiple remote nodes directly through its relay.
-
-### 2. Managed Identity (Passwordless Access)
-By default, the server generates an Ed25519 key pair in `/data`:
-- Private key: `/data/id_ed25519`
-- Public key: `/data/id_ed25519.pub`
-
-**To use it:** 
-1. Call `identity()` to get the public key.
-2. Add it to `~/.ssh/authorized_keys` on your target host(s).
-3. Connect without a password.
-
-### 3. Session Persistence Strategies
-Since many AI agents are "stateless" HTTP clients, the server uses three strategies to keep SSH connections alive and maintain state (like `cd` commands):
-
-*   **Standard Mode**: (Default) SSH state is tied to the persistent MCP connection (Best for Claude Desktop).
-*   **Smart Header Mode**: (Recommended for APIs) Caches sessions based on a client-provided header (e.g., `X-Session-Key: agent-1`). Sessions close after 5 minutes of silence.
-*   **Global Mode**: (`SSH_MCP_GLOBAL_STATE=true`) Shares one global manager for all clients. Best for private, single-user instances.
-
-## Tool Reference
-
-All tools accept a `target` parameter (default: `"primary"`) to specify the SSH connection.
-
-### Core & System
-| Tool | Description |
-|------|-------------|
-| `connect(host,...)` | Open SSH connection. Alias auto-generated as `user@host` if not provided. |
-| `disconnect(alias)` | Close one or all SSH connections |
-| `identity()` | Get server's public key for `authorized_keys` |
-| `info()` | Get remote OS/kernel/shell information |
-| `run(command)` | Execute any shell command |
-
-### File Operations
-| Tool | Description |
-|------|-------------|
-| `read(path)` | Read remote file content |
-| `write(path, content)` | Create/overwrite remote file |
-| `edit(path, old, new)` | Safe text replacement in a file |
-| `list_dir(path)` | List directory contents |
-| `sync(src, dst, ...)` | Stream file directly between two remote nodes |
-
-### Monitoring & Logs
-| Tool | Description |
-|------|-------------|
-| `usage()` | CPU/RAM/Disk usage summary |
-| `logs(path, lines=50, grep=None)` | Read recent logs from a file |
-| `ps(sort_by="cpu", limit=10)` | List top processes |
-| `journal_read(...)` | Read system logs (systemd/syslog) |
-| `dmesg_read(...)` | Read kernel ring buffer |
-| `diagnose_system()` | One-click SRE health check (load, OOM, disk, failed services) |
-
-### Networking
-| Tool | Description |
-|------|-------------|
-| `net_stat(port=None)` | Check listening ports (ss/netstat) |
 
 ### Docker
-| Tool | Description |
-|------|-------------|
-| `docker_ps(all=False)` | List Docker containers |
 
-### Services
-| Tool | Description |
-|------|-------------|
-| `list_services(failed_only=False)` | List system services (systemd/OpenRC) |
-
-### Search
-| Tool | Description |
-|------|-------------|
-| `search_files(pattern, path="/", ...)` | Find files using POSIX `find` |
-| `search_text(pattern, path, ...)` | Search in files using `grep` |
-
-### Package Management
-| Tool | Description |
-|------|-------------|
-| `package_manage(action, pkg)` | Install/remove/check packages (apt, apk, dnf, yum) |
-
-### Database
-| Tool | Description |
-|------|-------------|
-| `db_query(...)` | Execute SQL/CQL/MongoDB query in container |
-
-**Supported DBs:** PostgreSQL, MySQL, ScyllaDB, Cassandra, MongoDB
-
-### VoIP Troubleshooting
-| Tool | Description |
-|------|-------------|
-| `voip_discover_containers(keywords=None)` | Find VoIP containers by name/image keywords (default: gw, media, fs, sbc, sw) |
-| `voip_sip_capture(container, duration=30, port=None, protocol=None)` | Capture SIP to PCAP with sngrep |
-| `voip_call_flow(container, pcap_file, call_id=None, phone_number=None, max_bytes=None, summary_only=False)` | Parse SIP call flows |
-| `voip_registrations(container, pcap_file, max_bytes=None)` | Extract REGISTER outcomes |
-| `voip_call_stats(container, pcap_file, max_bytes=None)` | Aggregate SIP stats |
-| `voip_extract_sdp(container, pcap_file, call_id=None, max_bytes=None)` | Extract SDP (codecs, RTP ports) |
-| `voip_packet_check(container, duration=5)` | Quick SIP packet presence check |
-| `voip_network_capture(container, duration=30)` | Capture SIP packets with tcpdump |
-| `voip_rtp_capture(container, duration=10, port_range="50000-60000")` | Verify RTP flow |
-| `voip_network_diagnostics(host, ports=None, ...)` | Ping/traceroute/TCP reachability checks |
-
-## Advanced Usage
-
-### Multi-node orchestration
-You can connect to multiple hosts in a single session by using different `alias` values.
-```python
-connect(host="10.0.0.1", alias="web")
-connect(host="10.0.0.2", alias="db")
-run("uptime", target="web")
-sync(source_node="web", source_path="/log.txt", dest_node="db", dest_path="/tmp/")
+```bash
+docker build -t ssh-mcp .
+docker run -v /path/to/keys:/data ssh-mcp
 ```
 
-### Jump hosts
-Connect to private nodes through a bastion:
-```python
-connect(host="bastion.net", alias="jump")
-connect(host="10.0.1.5", via="jump", alias="private-srv")
+## CLI Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-mode` | `stdio` | Transport mode: `stdio` or `http` |
+| `-port` | `8000` | HTTP server port (http mode only) |
+| `-debug` | `false` | Enable debug logging |
+| `-global` | `false` | Use single shared SSH manager for all sessions |
+
+## Tools Reference
+
+### Core (5 tools)
+
+| Tool | Description |
+|------|-------------|
+| `connect` | Establish SSH connection with optional jump host support |
+| `disconnect` | Close one or all SSH connections |
+| `run` | Execute shell command with configurable timeout |
+| `identity` | Get server's public SSH key for authorized_keys |
+| `info` | Get remote system information |
+
+### File Operations (5 tools)
+
+| Tool | Description |
+|------|-------------|
+| `read` | Read remote file contents via SFTP |
+| `write` | Write content to remote file |
+| `edit` | Find and replace text in file |
+| `list_dir` | List directory contents with metadata |
+| `sync` | Stream file between two remote nodes |
+
+### Docker (8 tools)
+
+| Tool | Description |
+|------|-------------|
+| `docker_ps` | List containers |
+| `docker_logs` | Get container logs |
+| `docker_op` | Start/stop/restart containers |
+| `docker_ip` | Get container IP addresses |
+| `docker_find_by_ip` | Find container by IP address |
+| `docker_networks` | List Docker networks |
+| `docker_cp_from` | Copy file from container |
+| `docker_cp_to` | Copy file to container |
+
+### Monitoring (7 tools)
+
+| Tool | Description |
+|------|-------------|
+| `usage` | CPU, memory, disk usage |
+| `ps` | Process listing |
+| `logs` | Read log files with tail/head |
+| `journal_read` | Read systemd journal |
+| `dmesg_read` | Read kernel ring buffer |
+| `diagnose_system` | Comprehensive system diagnostics |
+| `list_services` | List systemd services |
+
+### Database (3 tools)
+
+| Tool | Description |
+|------|-------------|
+| `db_query` | Execute SQL on PostgreSQL/MySQL in Docker |
+| `db_schema` | Get database schema |
+| `list_db_containers` | Find database containers |
+
+### Network (4 tools)
+
+| Tool | Description |
+|------|-------------|
+| `net_stat` | Network statistics (ss/netstat) |
+| `search_files` | Find files by name pattern |
+| `search_text` | Search file contents (grep) |
+| `package_manage` | Install/remove packages |
+
+### VoIP SIP/RTP (10 tools)
+
+| Tool | Description |
+|------|-------------|
+| `voip_discover_containers` | Find VoIP containers |
+| `voip_sip_capture` | Capture SIP packets |
+| `voip_call_flow` | Parse SIP call flow from PCAP |
+| `voip_registrations` | Extract SIP registrations |
+| `voip_call_stats` | Call statistics summary |
+| `voip_extract_sdp` | Extract SDP from SIP |
+| `voip_packet_check` | Check for RTP/SIP packets |
+| `voip_network_capture` | Raw network packet capture |
+| `voip_rtp_capture` | Capture RTP streams |
+| `voip_network_diagnostics` | Ping, traceroute, port checks |
+
+## Usage Examples
+
+### Basic Connection
+
+```json
+// Connect to a server
+{"tool": "connect", "arguments": {"host": "10.0.0.1", "username": "admin"}}
+
+// Run a command
+{"tool": "run", "arguments": {"command": "hostname"}}
+
+// Read a file
+{"tool": "read", "arguments": {"path": "/etc/hostname"}}
 ```
 
-## Configuration
+### Jump Host (Bastion)
 
-| Variable | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `PORT` | Integer | `8000` | The port the HTTP server listens on. |
-| `SSH_MCP_SESSION_HEADER` | String | `X-Session-Key` | Header used for smart session caching. |
-| `SSH_MCP_SESSION_TIMEOUT` | Integer | `300` | Idle timeout for cached sessions in seconds. |
-| `SSH_MCP_GLOBAL_STATE` | Boolean | `false` | If `true`, a single SSH manager is shared by all clients. |
-| `SSH_MCP_COMMAND_TIMEOUT` | Float | `120.0` | Maximum time (seconds) allowed for an SSH command. |
-| `SSH_MCP_MAX_OUTPUT` | Integer | `51200` | Maximum byte size of command output returned (approx 50KB). |
-| `SSH_MCP_DEBUG_ASYNCSSH` | Boolean | `false` | Enable verbose debug logs for the `asyncssh` library. |
+```json
+// Connect to bastion first
+{"tool": "connect", "arguments": {"host": "bastion.example.com", "username": "admin", "alias": "bastion"}}
 
+// Connect to internal server through bastion
+{"tool": "connect", "arguments": {"host": "internal-server", "username": "admin", "via": "bastion"}}
+```
+
+### File Sync Between Hosts
+
+```json
+// Connect to both servers
+{"tool": "connect", "arguments": {"host": "server-a", "username": "admin", "alias": "A"}}
+{"tool": "connect", "arguments": {"host": "server-b", "username": "admin", "alias": "B"}}
+
+// Copy file from A to B (streams through MCP server)
+{"tool": "sync", "arguments": {"source_node": "A", "source_path": "/data/file.txt", "dest_node": "B", "dest_path": "/data/file.txt"}}
+```
+
+### Long-Running Commands
+
+```json
+// Run with custom timeout (default: 120s)
+{"tool": "run", "arguments": {"command": "apt update && apt upgrade -y", "timeout": 600}}
+```
+
+## Session Management
+
+### Session Isolation
+
+Each MCP client gets its own isolated connection pool:
+
+- **Session-based**: Automatic isolation by MCP session ID
+- **Header-based**: Use `X-Session-Key` header for custom grouping
+- **Global mode**: Single shared pool with `-global` flag
+
+### Session Lifecycle
+
+| Event | Behavior |
+|-------|----------|
+| Client connects | New session pool created |
+| Idle timeout (5 min) | Header-based sessions cleaned up |
+| Client disconnects | Session pool destroyed |
+| Server shutdown | All connections closed gracefully |
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     MCP Server                          │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │                   Pool                           │   │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐         │   │
+│  │  │ Session │  │ Session │  │ Session │  ...    │   │
+│  │  │ Manager │  │ Manager │  │ Manager │         │   │
+│  │  └────┬────┘  └────┬────┘  └────┬────┘         │   │
+│  └───────┼───────────┼───────────┼─────────────────┘   │
+│          │           │           │                      │
+│  ┌───────▼───────────▼───────────▼─────────────────┐   │
+│  │                SSH Clients                       │   │
+│  │  ┌────────┐  ┌────────┐  ┌────────┐             │   │
+│  │  │ host-a │  │ host-b │  │ via:   │   ...       │   │
+│  │  │        │  │        │  │ jump   │             │   │
+│  │  └────────┘  └────────┘  └────────┘             │   │
+│  └─────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Project Structure
+
+```
+.
+├── cmd/server/           # Application entry point
+│   └── main.go
+├── internal/
+│   ├── ssh/              # SSH connection management
+│   │   ├── client.go     # Single SSH connection with SFTP
+│   │   ├── manager.go    # Multi-connection pool per session
+│   │   ├── pool.go       # Session isolation and cleanup
+│   │   └── keys.go       # Ed25519 key generation
+│   ├── sip/              # VoIP packet parsing
+│   │   └── parser.go     # PCAP/SIP/RTP with gopacket
+│   └── tools/            # MCP tool implementations
+│       ├── core.go       # connect, disconnect, run
+│       ├── files.go      # read, write, edit, sync
+│       ├── docker.go     # Container operations
+│       ├── monitoring.go # System diagnostics
+│       ├── db.go         # Database queries
+│       ├── network.go    # Network utilities
+│       └── voip.go       # SIP/RTP tools
+├── Dockerfile            # Multi-stage distroless build
+├── go.mod
+└── README.md
+```
+
+## Development
+
+### Requirements
+
+- Go 1.25+
+- libpcap-dev (for VoIP tests with gopacket)
+
+### Build
+
+```bash
+go build -o ssh-mcp ./cmd/server
+```
+
+### Test
+
+```bash
+go test ./... -v
+```
+
+### Docker Build
+
+```bash
+docker build -t ssh-mcp .
+```
+
+## Load Balancing
+
+When running multiple instances, use hash-based load balancing:
+
+```nginx
+upstream mcp_servers {
+    hash $http_x_session_key consistent;
+    server mcp1:8000;
+    server mcp2:8000;
+    server mcp3:8000;
+}
+```
+
+## Security Considerations
+
+- **Key Management**: Mount `/data` volume for persistent SSH keys
+- **Host Key Verification**: Currently set to `InsecureIgnoreHostKey()` (customize for production)
+- **Path Validation**: All file operations validate against allowed root
+- **Session Timeout**: Idle sessions automatically cleaned up after 5 minutes
+
+## Contributing
+
+Contributions welcome! Please read the contributing guidelines and submit PRs.
 
 ## License
 
-MIT
+MIT License - see [LICENSE](LICENSE) for details.

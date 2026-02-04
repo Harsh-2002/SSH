@@ -1,35 +1,36 @@
-# Use official Python runtime
-FROM python:3.11-slim
+# Build stage
+FROM golang:1.23-alpine AS builder
 
-# Set environment variables
-ARG COMMIT_SHA=DEV
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PORT=8000 \
-    HOST=0.0.0.0 \
-    DEPLOYED_COMMIT=$COMMIT_SHA
+WORKDIR /build
 
-# Set work directory
-WORKDIR /app
+# Install dependencies
+RUN apk add --no-cache git ca-certificates
 
-# Copy source code and config
-COPY pyproject.toml README.md /app/
-COPY src /app/src
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Install dependencies and package
-RUN pip install --no-cache-dir .
+# Copy source
+COPY . .
 
-# Create 'mcp' user with UID 1000 for consistent volume permissions
-RUN useradd -m -u 1000 mcp && chown -R mcp:mcp /app
+# Build static binary
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-w -s" \
+    -o ssh-mcp \
+    ./cmd/server
 
-# Create data directory for keys (Standard Persistence Location)
-RUN mkdir -p /data && chown -R mcp:mcp /data && chmod 700 /data
+# Runtime stage - distroless for minimal attack surface
+FROM gcr.io/distroless/static-debian12:nonroot
 
-USER mcp
+# Copy binary
+COPY --from=builder /build/ssh-mcp /ssh-mcp
 
+# Create data directory (for SSH keys)
+VOLUME ["/data"]
 
-# Expose the port
-EXPOSE $PORT
+# Default to HTTP mode
+ENV SSH_MCP_MODE=http
+EXPOSE 8000
 
-# Run Streamable HTTP server (/mcp)
-CMD ["uvicorn", "ssh.server_all:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/ssh-mcp"]
+CMD ["-mode", "http", "-port", "8000"]

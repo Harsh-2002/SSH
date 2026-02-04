@@ -1,16 +1,42 @@
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-.env
-dist/
-build/
-*.egg-info/
+# Binaries
+ssh-mcp
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build artifacts
+/bin/
+/dist/
+
+# Test
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
+Thumbs.db
 
-# Data directory for SSH keys
-data/
+# Logs
+*.log
+logs/
 
-# Temporary session/troubleshooting docs
-session-ses_*.md
-Expand SRE Troubleshooting Tools.md
+# Local config
+.env
+.env.local
+
+# Data directory (SSH keys)
+/data/
