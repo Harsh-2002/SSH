@@ -258,15 +258,13 @@ func runHTTP(s *server.MCPServer, port string, pool *ssh.Pool) {
 	<-sigChan
 	log.Println("[HTTP] Shutting down...")
 
-	// Close SSH pool first (closes all SSH connections)
+	// Close SSH pool first (closes all SSH connections) - instant
 	pool.Close()
 
-	// Short timeout for HTTP - SSE connections may not close gracefully
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := httpServer.Shutdown(ctx); err != nil {
-		log.Printf("[HTTP] Shutdown: %v (SSE connections force-closed)", err)
+	// Force close HTTP server - don't wait for SSE streams
+	// SSE clients will reconnect automatically anyway
+	if err := httpServer.Close(); err != nil {
+		log.Printf("[HTTP] Close error: %v", err)
 	}
 
 	log.Println("[HTTP] Server stopped")
