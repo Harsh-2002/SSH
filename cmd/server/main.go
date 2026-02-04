@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"ssh-mcp/internal/ssh"
 	"ssh-mcp/internal/tools"
 
+	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/server"
 )
 
@@ -27,6 +29,52 @@ const (
 	defaultDebug = "false"
 	defaultGlobal = "false"
 )
+
+// UUIDv7SessionManager generates time-ordered UUIDv7 session IDs
+// for professional, sortable session identification.
+type UUIDv7SessionManager struct {
+	mu         sync.RWMutex
+	terminated map[string]bool
+}
+
+func NewUUIDv7SessionManager() *UUIDv7SessionManager {
+	return &UUIDv7SessionManager{
+		terminated: make(map[string]bool),
+	}
+}
+
+func (m *UUIDv7SessionManager) Generate() string {
+	// UUIDv7 includes timestamp for natural sorting and debugging
+	return uuid.Must(uuid.NewV7()).String()
+}
+
+func (m *UUIDv7SessionManager) Validate(sessionID string) (bool, error) {
+	// Validate format
+	if _, err := uuid.Parse(sessionID); err != nil {
+		return false, err
+	}
+	
+	// Check if terminated
+	m.mu.RLock()
+	isTerminated := m.terminated[sessionID]
+	m.mu.RUnlock()
+	
+	return isTerminated, nil
+}
+
+func (m *UUIDv7SessionManager) Terminate(sessionID string) (bool, error) {
+	// Validate format first
+	if _, err := uuid.Parse(sessionID); err != nil {
+		return false, err
+	}
+	
+	m.mu.Lock()
+	m.terminated[sessionID] = true
+	m.mu.Unlock()
+	
+	log.Printf("[SESSION] Terminated: %s", sessionID)
+	return false, nil // isNotAllowed=false (we allow termination)
+}
 
 // Injected at build time
 var commitSHA = "dev"
@@ -119,17 +167,45 @@ func runStdio(s *server.MCPServer) {
 	}
 }
 
+// sessionKeyContextKey is used to store X-Session-Key in context
+type contextKey string
+
+const sessionKeyHeader = "X-Session-Key"
+const sessionKeyContextKey contextKey = "session-key"
+
 // runHTTP runs the server in Streamable HTTP mode with graceful shutdown.
+// 
+// PRODUCTION SECURITY NOTICE:
+// This implementation requires additional security layers for production use:
+// - TLS/HTTPS: Use WithTLSCert() or run behind a reverse proxy with TLS
+// - Authentication: Validate X-Session-Key against authorized keys
+// - Authorization: Implement per-user access controls
+// - Rate Limiting: Add request throttling
+// - Audit Logging: Track all tool invocations with user context
 func runHTTP(s *server.MCPServer, port string) {
-	sseSrv := server.NewSSEServer(s)
+	// Use StreamableHTTPServer with UUIDv7 session IDs and security middleware
+	httpSrv := server.NewStreamableHTTPServer(s,
+		// Use time-ordered UUIDv7 for professional session IDs
+		server.WithSessionIdManager(NewUUIDv7SessionManager()),
+		
+		// Extract X-Session-Key for session persistence
+		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
+			sessionKey := r.Header.Get(sessionKeyHeader)
+			if sessionKey != "" {
+				// TODO PRODUCTION: Validate sessionKey against authorized keys here
+				log.Printf("[SECURITY] Session key received: %s from %s", sessionKey, r.RemoteAddr)
+				return context.WithValue(ctx, sessionKeyContextKey, sessionKey)
+			}
+			log.Printf("[SECURITY] No session key provided from %s", r.RemoteAddr)
+			return ctx
+		}),
+	)
 	
 	mux := http.NewServeMux()
 	
-	// Register SSE handler at /mcp
-	mux.Handle("/mcp", sseSrv.SSEHandler())
-	
-	// Register Messages handler at /mcp/messages
-	mux.Handle("/mcp/messages", sseSrv.MessageHandler())
+	// Register the streamable HTTP handler at /mcp
+	// This handles both POST requests and GET (SSE) connections
+	mux.Handle("/mcp", httpSrv)
 
 	httpServer := &http.Server{
 		Addr:    ":" + port,
