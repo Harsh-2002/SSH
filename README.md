@@ -259,7 +259,6 @@ docker build --build-arg COMMIT_SHA=$(git rev-parse --short HEAD) -t ssh-mcp .
 
 - Deploy behind reverse proxy (TLS termination)
 - Private network or VPN-restricted access
-- See [SECURITY.md](SECURITY.md) for authentication and hardening
 
 ### Endpoints
 
@@ -276,4 +275,4 @@ Contributions welcome. Ensure tests pass with `go test -race` before submitting.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT
