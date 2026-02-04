@@ -304,6 +304,8 @@ docker build --build-arg COMMIT_SHA=$(git rev-parse --short HEAD) -t ssh-mcp .
 ### Protocol Support
 - **SSH/SFTP**: Native support for file transfer and command execution.
 - **HTTP (MCP)**: Server-Sent Events (SSE) compliant transport.
+  - Endpoint: `/mcp` (Connections)
+  - Endpoint: `/mcp/messages` (JSON-RPC)
 - **VoIP**: SIP/RTP PCAP analysis capabilities included.
 
 ### Load BalancingStrategy

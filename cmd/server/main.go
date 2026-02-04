@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -120,14 +121,27 @@ func runStdio(s *server.MCPServer) {
 
 // runHTTP runs the server in Streamable HTTP mode with graceful shutdown.
 func runHTTP(s *server.MCPServer, port string) {
-	httpServer := server.NewStreamableHTTPServer(s)
+	sseSrv := server.NewSSEServer(s)
+	
+	mux := http.NewServeMux()
+	
+	// Register SSE handler at /mcp
+	mux.Handle("/mcp", sseSrv.SSEHandler())
+	
+	// Register Messages handler at /mcp/messages
+	mux.Handle("/mcp/messages", sseSrv.MessageHandler())
+
+	httpServer := &http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
+	}
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("[HTTP] Listening on :%s", port)
-		if err := httpServer.Start(":" + port); err != nil {
+		log.Printf("[HTTP] Listening on :%s/mcp", port)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server error: %v", err)
 		}
 	}()
