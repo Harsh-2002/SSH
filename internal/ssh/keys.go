@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	// DefaultKeyPath is the standard location for the system SSH key.
-	DefaultKeyPath = "/data/id_ed25519"
+	// ProductionKeyPath is the Docker/production location for SSH keys.
+	ProductionKeyPath = "/data/id_ed25519"
+	// DevKeyPath is the local development location for SSH keys.
+	DevKeyPath = "./data/id_ed25519"
 )
 
 // KeyManager handles SSH key generation and loading.
@@ -24,20 +26,55 @@ type KeyManager struct {
 }
 
 // NewKeyManager creates a new KeyManager.
+// Automatically detects environment: uses /data for production (Docker),
+// ./data for local development.
 func NewKeyManager(keyPath string) *KeyManager {
 	if keyPath == "" {
-		keyPath = DefaultKeyPath
+		keyPath = getDefaultKeyPath()
 	}
 	return &KeyManager{keyPath: keyPath}
+}
+
+// getDefaultKeyPath returns the appropriate default path based on environment.
+func getDefaultKeyPath() string {
+	// Check if /data exists (production/Docker environment)
+	if stat, err := os.Stat("/data"); err == nil && stat.IsDir() {
+		// /data exists - this is production mode, MUST be writable
+		return ProductionKeyPath
+	}
+	// /data doesn't exist - local development mode
+	return DevKeyPath
 }
 
 // EnsureKey ensures the system key exists, generating if necessary.
 func (km *KeyManager) EnsureKey() error {
 	keyDir := filepath.Dir(km.keyPath)
 
-	if _, err := os.Stat(keyDir); os.IsNotExist(err) {
-		return fmt.Errorf("key directory does not exist: %s. Mount a volume to /data", keyDir)
+	// Check if directory exists
+	stat, err := os.Stat(keyDir)
+	if os.IsNotExist(err) {
+		// Directory doesn't exist
+		if keyDir == "/data" {
+			// Production mode - FAIL if /data doesn't exist
+			return fmt.Errorf("production key directory /data does not exist - ensure volume is mounted")
+		}
+		// Development mode - create directory
+		if err := os.MkdirAll(keyDir, 0700); err != nil {
+			return fmt.Errorf("failed to create key directory %s: %w", keyDir, err)
+		}
+		log.Printf("[KEY] Created key directory: %s", keyDir)
+	} else if err != nil {
+		return fmt.Errorf("failed to access key directory %s: %w", keyDir, err)
+	} else if !stat.IsDir() {
+		return fmt.Errorf("key path %s exists but is not a directory", keyDir)
 	}
+
+	// Test write permissions by attempting to create a temp file
+	testFile := filepath.Join(keyDir, ".write_test")
+	if err := os.WriteFile(testFile, []byte("test"), 0600); err != nil {
+		return fmt.Errorf("key directory %s is not writable: %w", keyDir, err)
+	}
+	os.Remove(testFile)
 
 	if _, err := os.Stat(km.keyPath); os.IsNotExist(err) {
 		log.Printf("[KEY] Generating new Ed25519 key pair at %s", km.keyPath)

@@ -19,17 +19,21 @@ A high-performance SSH connection management server implementing the [Model Cont
 # Build
 go build -o ssh-mcp ./cmd/server
 
-# Run HTTP server
+# Run HTTP server (development - keys in ./data/)
 ./ssh-mcp                    # Default: :8000
 PORT=9090 ./ssh-mcp          # Custom port
 
 # Run stdio mode (local MCP hosts)
 ./ssh-mcp -mode stdio
 
-# Docker
+# Docker (production - keys in /data volume)
 docker build -t ssh-mcp .
-docker run -v /path/to/keys:/data -p 8000:8000 ssh-mcp
+docker run -v ssh-keys:/data -p 8000:8000 ssh-mcp
 ```
+
+**SSH Key Storage**:
+- **Development**: `./data/id_ed25519` (auto-created on first connection)
+- **Production**: `/data/id_ed25519` (requires mounted volume, fails if not writable)
 
 ## Configuration
 
