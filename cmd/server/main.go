@@ -79,7 +79,7 @@ func (m *UUIDv7SessionManager) Validate(sessionID string) (bool, error) {
 	_, isTerminated := m.terminated[sessionID]
 	m.mu.RUnlock()
 	
-	return !isTerminated, nil
+	return isTerminated, nil
 }
 
 func (m *UUIDv7SessionManager) Terminate(sessionID string) (bool, error) {
