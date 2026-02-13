@@ -21,20 +21,14 @@ type Manager struct {
 	keyManager  *KeyManager
 	mu          sync.RWMutex
 	aliasLocks  map[string]*sync.Mutex
-	allowedRoot string
 }
 
 // NewManager creates a new SSH connection manager.
-func NewManager(keyPath, allowedRoot string) *Manager {
-	if allowedRoot == "" {
-		allowedRoot = "/"
-	}
-
+func NewManager(keyPath string) *Manager {
 	mgr := &Manager{
 		connections: make(map[string]*Client),
 		keyManager:  NewKeyManager(keyPath),
 		aliasLocks:  make(map[string]*sync.Mutex),
-		allowedRoot: allowedRoot,
 	}
 
 	if err := mgr.keyManager.EnsureKey(); err != nil {
@@ -352,8 +346,9 @@ func (m *Manager) Execute(ctx context.Context, cmd, target string) (string, erro
 	return outputStr, nil
 }
 
-// validatePath ensures path is within allowed root.
-func (m *Manager) validatePath(path, alias string) (string, error) {
+// resolvePath resolves a path to an absolute path using the connection's CWD.
+// No path restrictions — the connected user's OS permissions are the only boundary.
+func (m *Manager) resolvePath(path, alias string) string {
 	m.mu.RLock()
 	client := m.connections[alias]
 	m.mu.RUnlock()
@@ -367,19 +362,33 @@ func (m *Manager) validatePath(path, alias string) (string, error) {
 		path = filepath.Join(cwd, path)
 	}
 
-	absPath := filepath.Clean(path)
+	return filepath.Clean(path)
+}
 
-	// Security Check: Ensure path is within allowed root
-	// We must ensure the clean path starts with allowed_root AND
-	// that it's either exactly the root or followed by a separator.
-	// This prevents /safe_root being matched by /safe_root_sibling
-	cleanRoot := filepath.Clean(m.allowedRoot)
-	
-	if absPath != cleanRoot && !strings.HasPrefix(absPath, cleanRoot+string(os.PathSeparator)) {
-		return "", fmt.Errorf("access denied: path '%s' is outside allowed root '%s'", absPath, m.allowedRoot)
+// IsRoot checks whether the connection for the given target alias is logged in as root.
+func (m *Manager) IsRoot(target string) bool {
+	alias, err := m.resolveTarget(target)
+	if err != nil {
+		return false
 	}
 
-	return absPath, nil
+	m.mu.RLock()
+	client := m.connections[alias]
+	m.mu.RUnlock()
+
+	if client == nil {
+		return false
+	}
+	return client.creds.Username == "root"
+}
+
+// SudoPrefix returns "sudo " if the connection user is not root, empty string otherwise.
+// This allows tools to automatically elevate privileges when needed.
+func (m *Manager) SudoPrefix(target string) string {
+	if m.IsRoot(target) {
+		return ""
+	}
+	return "sudo "
 }
 
 // ReadFile reads a file.
@@ -389,10 +398,7 @@ func (m *Manager) ReadFile(ctx context.Context, path, target string) (string, er
 		return "", err
 	}
 
-	safePath, err := m.validatePath(path, alias)
-	if err != nil {
-		return "", err
-	}
+	resolved := m.resolvePath(path, alias)
 
 	lock := m.getAliasLock(alias)
 	lock.Lock()
@@ -407,7 +413,7 @@ func (m *Manager) ReadFile(ctx context.Context, path, target string) (string, er
 		return "", err
 	}
 
-	file, err := sftpClient.Open(safePath)
+	file, err := sftpClient.Open(resolved)
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
@@ -428,10 +434,7 @@ func (m *Manager) WriteFile(ctx context.Context, path, content, target string) e
 		return err
 	}
 
-	safePath, err := m.validatePath(path, alias)
-	if err != nil {
-		return err
-	}
+	resolved := m.resolvePath(path, alias)
 
 	lock := m.getAliasLock(alias)
 	lock.Lock()
@@ -446,7 +449,7 @@ func (m *Manager) WriteFile(ctx context.Context, path, content, target string) e
 		return err
 	}
 
-	file, err := sftpClient.Create(safePath)
+	file, err := sftpClient.Create(resolved)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
@@ -467,10 +470,7 @@ func (m *Manager) ListDir(ctx context.Context, path, target string) ([]FileInfo,
 		return nil, err
 	}
 
-	safePath, err := m.validatePath(path, alias)
-	if err != nil {
-		return nil, err
-	}
+	resolved := m.resolvePath(path, alias)
 
 	lock := m.getAliasLock(alias)
 	lock.Lock()
@@ -485,7 +485,7 @@ func (m *Manager) ListDir(ctx context.Context, path, target string) ([]FileInfo,
 		return nil, err
 	}
 
-	entries, err := sftpClient.ReadDir(safePath)
+	entries, err := sftpClient.ReadDir(resolved)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list directory: %w", err)
 	}

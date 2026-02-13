@@ -7,10 +7,13 @@ A high-performance SSH connection management server implementing the [Model Cont
 
 ## Features
 
-- **42 Production Tools** - SSH, SFTP, Docker, databases, system monitoring, and VoIP diagnostics
+- **43 Production Tools** - SSH, SFTP, Docker, databases, system monitoring, and VoIP diagnostics
 - **Persistent SSH Sessions** - Connection pooling with automatic lifecycle management
 - **Jump Host/Bastion Support** - Multi-hop SSH tunneling via `via` parameter
 - **Session Isolation** - Thread-safe per-client connection pools with configurable cleanup
+- **Auto-Sudo Detection** - Automatically prefixes `sudo` for non-root users when needed
+- **Server-Side Syntax Validation** - Go-native validators for YAML, JSON, TOML, XML, INI, Dockerfile, ENV — zero remote host dependencies. Validates before writes and after edits
+- **Sed-like File Editing** - Regex, insert, append, delete, replace operations on any file
 - **Single Static Binary** - Zero runtime dependencies, distroless container deployment
 
 ## Quick Start
@@ -76,13 +79,14 @@ docker run -v ssh-keys:/data -p 8000:8000 ssh-mcp
 | `identity` | Get server's public SSH key for authorized_keys |
 | `info` | Get remote system information |
 
-### File Operations (5 tools)
+### File Operations (6 tools)
 
 | Tool | Description |
 |------|-------------|
 | `read` | Read remote file contents via SFTP |
-| `write` | Write content to remote file |
-| `edit` | Find and replace text in file |
+| `write` | Write content to remote file — validates syntax BEFORE writing (server-side) |
+| `edit` | Sed-like file editor: replace, regex, insert, append, prepend, delete, replace_line |
+| `validate` | Validate file syntax server-side (JSON, YAML, TOML, XML, INI, Dockerfile, ENV) |
 | `list_dir` | List directory contents with metadata |
 | `sync` | Stream file between two remote nodes |
 
@@ -186,6 +190,49 @@ docker run -v ssh-keys:/data -p 8000:8000 ssh-mcp
 {"tool": "run", "arguments": {"command": "apt update && apt upgrade -y", "timeout": 600}}
 ```
 
+### Sed-like File Editing
+
+```json
+// Simple find-and-replace
+{"tool": "edit", "arguments": {"path": "/etc/nginx/nginx.conf", "old_text": "worker_connections 512", "new_text": "worker_connections 1024"}}
+
+// Regex replace (change any timeout value)
+{"tool": "edit", "arguments": {"path": "/etc/app/config.yaml", "operation": "regex", "pattern": "timeout:\\s*\\d+", "replacement": "timeout: 30"}}
+
+// Insert a line at position 5
+{"tool": "edit", "arguments": {"path": "/etc/hosts", "operation": "insert", "line": 5, "content": "10.0.0.5 myhost"}}
+
+// Append after a matching section header
+{"tool": "edit", "arguments": {"path": "/etc/app.ini", "operation": "append", "pattern": "\\[database\\]", "content": "pool_size = 20"}}
+
+// Delete lines matching a pattern
+{"tool": "edit", "arguments": {"path": "/etc/config.conf", "operation": "delete", "pattern": "^#.*deprecated"}}
+
+// Delete a line range
+{"tool": "edit", "arguments": {"path": "/tmp/data.txt", "operation": "delete", "start_line": 10, "end_line": 15}}
+```
+
+### Syntax Validation (Server-Side)
+
+All validation runs on the MCP server using Go-native parsers — **zero dependencies on remote host tools** (no python3, jq, xmllint needed).
+
+```json
+// Validate a YAML file (reads via SFTP, validates in Go)
+{"tool": "validate", "arguments": {"path": "/etc/app/config.yaml"}}
+
+// Validate JSON with forced type
+{"tool": "validate", "arguments": {"path": "/data/config", "type": "json"}}
+
+// Write with pre-write validation (blocks write on syntax error)
+{"tool": "write", "arguments": {"path": "/etc/app/config.json", "content": "{\"port\": 8080}"}}
+
+// Edit automatically validates after changes
+{"tool": "edit", "arguments": {"path": "/etc/app/config.yaml", "operation": "replace", "find": "port: 80", "replace": "port: 443"}}
+
+// Write without validation
+{"tool": "write", "arguments": {"path": "/etc/app/config.json", "content": "{\"port\": 8080}", "skip_validate": true}}
+```
+
 ## Session Management
 
 ### Isolation Modes
@@ -231,7 +278,8 @@ Each session maintains isolated SSH connections with independent lifecycle manag
 
 ### Security
 
-- Path traversal protection with security test enforcement
+- No artificial path restrictions — uses the SSH user’s native OS permissions
+- Auto-sudo for non-root users (`SudoPrefix` helper)
 - Session pool isolation (thread-safe, no cross-contamination)
 - Ed25519 key generation with 0600 permissions
 - Distroless container runtime
@@ -264,9 +312,6 @@ Each session maintains isolated SSH connections with independent lifecycle manag
 # Build from source
 go build -o ssh-mcp ./cmd/server
 
-# Test with race detection
-go test ./... -v -race
-
 # Build Docker image locally
 docker build --build-arg COMMIT_SHA=$(git rev-parse --short HEAD) -t ssh-mcp .
 
@@ -274,7 +319,7 @@ docker build --build-arg COMMIT_SHA=$(git rev-parse --short HEAD) -t ssh-mcp .
 docker pull firstfinger/ssh-mcp:latest
 ```
 
-**Requirements**: Go 1.25+, libpcap-dev (VoIP tools)
+**Requirements**: Go 1.25+
 
 ## Deployment
 
@@ -294,7 +339,7 @@ Use consistent hashing on `X-Session-Key` for sticky routing.
 
 ## Contributing
 
-Contributions welcome. Ensure tests pass with `go test -race` before submitting.
+Contributions welcome.
 
 ## License
 

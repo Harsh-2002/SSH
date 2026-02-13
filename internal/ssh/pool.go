@@ -70,7 +70,7 @@ func NewPool(globalMode bool) *Pool {
 	}
 
 	if globalMode {
-		pool.global = NewManager("", "/")
+		pool.global = NewManager("")
 		log.Println("[Pool] Running in global mode - single shared manager")
 	} else {
 		// Start cleanup goroutine
@@ -129,7 +129,7 @@ func (p *Pool) GetByHeader(headerKey string) *Manager {
 
 	// Create new
 	log.Printf("[Pool] Created new manager for header: %s (expires in %v)", headerKey, p.timeout)
-	mgr := NewManager("", "/")
+	mgr := NewManager("")
 	entry = &sessionEntry{manager: mgr}
 	entry.touch()
 	p.headerCache[headerKey] = entry
@@ -165,7 +165,7 @@ func (p *Pool) TouchHeader(headerKey string) {
 
 	// Create new manager
 	log.Printf("[Pool] Created new manager for header: %s (expires in %v)", headerKey, p.timeout)
-	mgr := NewManager("", "/")
+	mgr := NewManager("")
 	entry = &sessionEntry{manager: mgr}
 	entry.touch()
 	p.headerCache[headerKey] = entry
@@ -190,7 +190,7 @@ func (p *Pool) CreateSession(sessionID string) {
 		return
 	}
 
-	p.managers[sessionID] = NewManager("", "/")
+	p.managers[sessionID] = NewManager("")
 	log.Printf("[Pool] Created manager for session %s", sessionID)
 }
 
