@@ -33,5 +33,9 @@ VOLUME ["/data"]
 ENV SSH_MCP_MODE=http
 EXPOSE 8000
 
+# Health check — process is alive and listening
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/ssh-mcp", "--health"] || exit 1
+
 ENTRYPOINT ["/ssh-mcp"]
 CMD []

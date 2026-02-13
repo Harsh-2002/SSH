@@ -163,8 +163,24 @@ func createVoIPDiscoverHandler(pool *ssh.Pool) server.ToolHandlerFunc {
 		// Default VoIP keywords
 		defaultKeywords := []string{"gw", "media", "fs", "sbc", "sw", "freeswitch", "asterisk", "kamailio", "opensips", "rtpengine"}
 
+		// Use custom keywords if provided via arguments
+		keywords := defaultKeywords
+		if rawKW, ok := req.GetArguments()["keywords"]; ok {
+			if kwArr, ok := rawKW.([]interface{}); ok && len(kwArr) > 0 {
+				keywords = make([]string, 0, len(kwArr))
+				for _, kw := range kwArr {
+					if s, ok := kw.(string); ok && s != "" {
+						keywords = append(keywords, s)
+					}
+				}
+				if len(keywords) == 0 {
+					keywords = defaultKeywords
+				}
+			}
+		}
+
 		// Build grep pattern
-		pattern := strings.Join(defaultKeywords, "\\|")
+		pattern := strings.Join(keywords, "\\|")
 		cmd := fmt.Sprintf(`docker ps --format '{{.Names}}|{{.Image}}' | grep -iE '%s' 2>/dev/null || echo ''`, pattern)
 
 		output, err := mgr.Execute(ctx, cmd, target)
@@ -231,14 +247,23 @@ func createSIPCaptureHandler(pool *ssh.Pool) server.ToolHandlerFunc {
 		cmd := fmt.Sprintf("docker exec %s timeout %ds sngrep -N -q -d any -O %s '%s' 2>&1 || true",
 			shellQuote(container), duration, pcapPath, bpfFilter)
 
-		mgr.Execute(ctx, cmd, target) // Ignore timeout error
+		mgr.Execute(ctx, cmd, target) // Ignore timeout error (expected with captures)
+
+		// Verify PCAP file was created
+		checkFile := fmt.Sprintf("docker exec %s test -f %s && echo 'exists' || echo 'missing'", shellQuote(container), pcapPath)
+		checkResult, _ := mgr.Execute(ctx, checkFile, target)
+		fileStatus := "created"
+		if !containsString(checkResult, "exists") {
+			fileStatus = "not created (capture may have failed)"
+		}
 
 		result := map[string]interface{}{
-			"container":  container,
-			"pcap_file":  pcapPath,
-			"duration":   duration,
-			"filter":     bpfFilter,
-			"message":    fmt.Sprintf("SIP capture completed. Use voip_call_flow to analyze %s", pcapPath),
+			"container":   container,
+			"pcap_file":   pcapPath,
+			"duration":    duration,
+			"filter":      bpfFilter,
+			"file_status": fileStatus,
+			"message":     fmt.Sprintf("SIP capture completed. Use voip_call_flow to analyze %s", pcapPath),
 		}
 
 		jsonBytes, _ := json.MarshalIndent(result, "", "  ")
@@ -455,14 +480,23 @@ func createNetworkCaptureHandler(pool *ssh.Pool) server.ToolHandlerFunc {
 		cmd := fmt.Sprintf(`docker exec %s sh -c 'if command -v tcpdump >/dev/null 2>&1; then timeout %ds tcpdump -i %s -w %s port 5060 or port 5061 2>&1 || true; else echo "tcpdump not available"; fi'`,
 			shellQuote(container), duration, iface, pcapPath)
 
-		mgr.Execute(ctx, cmd, target) // Ignore timeout
+		mgr.Execute(ctx, cmd, target) // Ignore timeout (expected with captures)
+
+		// Verify PCAP file was created
+		checkFile := fmt.Sprintf("docker exec %s test -f %s && echo 'exists' || echo 'missing'", shellQuote(container), pcapPath)
+		checkResult, _ := mgr.Execute(ctx, checkFile, target)
+		fileStatus := "created"
+		if !containsString(checkResult, "exists") {
+			fileStatus = "not created (capture may have failed)"
+		}
 
 		result := map[string]interface{}{
-			"container":  container,
-			"pcap_file":  pcapPath,
-			"duration":   duration,
-			"interface":  iface,
-			"message":    fmt.Sprintf("Network capture complete. Analyze with voip_call_flow or copy with docker_cp_from"),
+			"container":   container,
+			"pcap_file":   pcapPath,
+			"duration":    duration,
+			"interface":   iface,
+			"file_status": fileStatus,
+			"message":     fmt.Sprintf("Network capture complete. Analyze with voip_call_flow or copy with docker_cp_from"),
 		}
 
 		jsonBytes, _ := json.MarshalIndent(result, "", "  ")
@@ -528,8 +562,21 @@ func createNetworkDiagnosticsHandler(pool *ssh.Pool) server.ToolHandlerFunc {
 		timeout := req.GetInt("timeout", 15)
 		target := req.GetString("target", "primary")
 
-		// Default ports
+		// Default ports, override from request if provided
 		ports := []int{5060, 5061}
+		if rawPorts, ok := req.GetArguments()["ports"]; ok {
+			if portArr, ok := rawPorts.([]interface{}); ok && len(portArr) > 0 {
+				ports = make([]int, 0, len(portArr))
+				for _, p := range portArr {
+					if num, ok := p.(float64); ok {
+						ports = append(ports, int(num))
+					}
+				}
+				if len(ports) == 0 {
+					ports = []int{5060, 5061}
+				}
+			}
+		}
 
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("=== NETWORK DIAGNOSTICS: %s ===\n\n", host))

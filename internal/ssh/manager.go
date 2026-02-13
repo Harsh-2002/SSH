@@ -408,6 +408,10 @@ func (m *Manager) ReadFile(ctx context.Context, path, target string) (string, er
 	client := m.connections[alias]
 	m.mu.RUnlock()
 
+	if client == nil {
+		return "", fmt.Errorf("connection '%s' is no longer active", alias)
+	}
+
 	sftpClient, err := client.SFTP()
 	if err != nil {
 		return "", err
@@ -444,6 +448,10 @@ func (m *Manager) WriteFile(ctx context.Context, path, content, target string) e
 	client := m.connections[alias]
 	m.mu.RUnlock()
 
+	if client == nil {
+		return fmt.Errorf("connection '%s' is no longer active", alias)
+	}
+
 	sftpClient, err := client.SFTP()
 	if err != nil {
 		return err
@@ -479,6 +487,10 @@ func (m *Manager) ListDir(ctx context.Context, path, target string) ([]FileInfo,
 	m.mu.RLock()
 	client := m.connections[alias]
 	m.mu.RUnlock()
+
+	if client == nil {
+		return nil, fmt.Errorf("connection '%s' is no longer active", alias)
+	}
 
 	sftpClient, err := client.SFTP()
 	if err != nil {

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -27,7 +28,6 @@ const (
 	defaultMode  = "http"
 	defaultPort  = "8000"
 	defaultDebug = "false"
-	defaultGlobal = "false"
 )
 
 // UUIDv7SessionManager generates time-ordered UUIDv7 session IDs
@@ -79,7 +79,7 @@ func (m *UUIDv7SessionManager) Validate(sessionID string) (bool, error) {
 	_, isTerminated := m.terminated[sessionID]
 	m.mu.RUnlock()
 	
-	return isTerminated, nil
+	return !isTerminated, nil
 }
 
 func (m *UUIDv7SessionManager) Terminate(sessionID string) (bool, error) {
@@ -100,6 +100,12 @@ func (m *UUIDv7SessionManager) Terminate(sessionID string) (bool, error) {
 var commitSHA = "dev"
 
 func main() {
+	// Health check endpoint for Docker HEALTHCHECK
+	if len(os.Args) > 1 && os.Args[1] == "--health" {
+		fmt.Println("ok")
+		os.Exit(0)
+	}
+
 	// Configuration Precedence: Flag > Env > Default
 	
 	// Helper to get env with fallback

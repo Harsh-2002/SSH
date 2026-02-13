@@ -171,8 +171,6 @@ func createDBSchemaHandler(pool *ssh.Pool) server.ToolHandlerFunc {
 			return mcp.NewToolResultError(fmt.Sprintf("Unsupported database type: %s", dbType)), nil
 		}
 
-		// Reuse db_query logic
-		schemaReq := mcp.CallToolRequest{}
 		// Build command directly
 		var cmd string
 		switch dbType {
@@ -220,7 +218,6 @@ func createDBSchemaHandler(pool *ssh.Pool) server.ToolHandlerFunc {
 			}
 			cmd += fmt.Sprintf(" --eval %s 2>&1", shellQuote(query))
 		}
-		_ = schemaReq // silence unused
 
 		output, err := mgr.Execute(ctx, cmd, target)
 		if err != nil {
